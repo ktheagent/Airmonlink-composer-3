@@ -1,0 +1,76 @@
+name: Validate Composer 3 Source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "test/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/validate-composer-3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-composer-3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check required and forbidden renderer files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src/bootstrap.js
+          test -f src/ui/index.html
+          test -f src/ui/styles.css
+          test -f src/ui/app.js
+          test -f src/ui/dock-manager.js
+          test -f src/ui/publishing-controller.js
+          test ! -e src/ui/publishing-ui.js
+          test ! -e src/ui/publishing-exposure.js
+          test ! -e src/release-bootstrap.js
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check src/bootstrap.js
+          node --check src/main.js
+          node --check src/preload.js
+          node --check src/ui/app.js
+          node --check src/ui/dock-manager.js
+          node --check src/ui/publishing-controller.js
+          node --check test/v126-clean-renderer-migration.test.js
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run complete test suite
+        run: npm test
+
+      - name: Verify Build 18 source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const p=require('./package.json'); if(p.version!=='1.1.0'||String(p.buildNumber)!=='18'||p.build.buildVersion!=='1.1.0.18') process.exit(1)"
+          grep -q 'Build 18' src/ui/index.html
+          grep -q 'const BUILD = 18' src/bootstrap.js
+          ! grep -R -n -E 'Print or PDF|Print / PDF|PDF Print / PDF|Build 12|Build 17' src/ui
