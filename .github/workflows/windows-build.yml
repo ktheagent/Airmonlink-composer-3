@@ -25,17 +25,47 @@ jobs:
     steps:
       - name: Checkout exact commit
         uses: actions/checkout4v4
+        with:
+          fetch-depth: 0
 
-      - name: Confirm green source audit
+      - name: Confirm green source audit still applies
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $report = Get-Content "docs/checkpoints/04-full-test-audit.md" -Raw
-          if (-not $report.Contains("Audit conclusion: **PASS**")) {
+          $reportPath = "docs/checkpoints/04-full-test-audit.md"
+          if (-not (Test-Path $reportPath)) {
+            throw "The committed source audit report is missing."
+          }
+
+          $report = Get-Content $reportPath -Raw
+          if ($report -notmatch '(?m)^- Audit conclusion: \*\*PASS\*\*$') {
             throw "The committed source audit is not green."
           }
-          if (-not $report.Contains("Failing test files: ``0``")) {
-            throw "The committed source audit still records failing test files."
+          if ($report -notmatch '(?m)^- Failing test files: `0`$') {
+            throw "The committed source audit records failing test files."
+          }
+
+          $commitMatch = [regex]::Match(
+            $report,
+            '(?m)^Commit: `([0-9a-f]{40})`$'
+          )
+          if (-not $commitMatch.Success) {
+            throw "The audited commit SHA was not found in the report."
+          }
+
+          $auditedCommit = $commitMatch.Groups[1].Value
+          $changedFiles = @(git diff --name-only "$auditedCommit..HEAD")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to compare the audited commit with HEAD."
+          }
+
+          $criticalChanges = @(
+            $changedFiles | Where-Object {
+              $_ -match '^(src/|test/|scripts/|package\.json$|package-lock\.json$)'
+            }
+          )
+          if ($criticalChanges.Count -gt 0) {
+            throw "Application or validation files changed after the green audit: $($criticalChanges -join ', ')"
           }
 
       - name: Parse PowerShell release validator
@@ -44,7 +74,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           $tokens = $null
           $errors = $null
-          [Void][System.Management.Automation.Language.Parser]::ParseFile(
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
             (Resolve-Path ".\scripts\windows-release-validation.ps1"),
             [ref]$tokens,
             [ref]$errors
@@ -57,14 +87,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.22.2
-
-      - name: Enable pnpm
-        shell: pwsh
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.14.0 --activate
-          pnpm --version
+          node-version: "22"
+          cache: npm
 
       - name: Install locked dependencies
         shell: pwsh
@@ -73,36 +97,15 @@ jobs:
           Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue
           Remove-Item Env:NPM_CONFIG_PRODUCTION -ErrorAction SilentlyContinue
           Remove-Item Env:NPM_CONFIG_OMIT -ErrorAction SilentlyContinue
-          if (Test-Path node_modules) {
-            Remove-Item node_modules -Recurse -Force
-          }
-          if (Test-Path pnpm-lock.yaml) {
-            Remove-Item pnpm-lock.yaml -Force
-          }
-          pnpm import
+          npm ci --include=dev
           if ($LASTEXITCODE -ne 0) {
-            throw "pnpm import failed with exit code $LASTEXITCODE."
+            throw "npm ci failed with exit code $LASTEXITCODE."
           }
-          pnpm install --frozen-lockfile --ignore-scripts
-          if ($LASTEXITCODE -ne 0) {
-            throw "pnpm install failed with exit code $LASTEXITCODE."
-          }
+
           if (-not (Test-Path "node_modules\electron-builder\cli.js")) {
             throw "electron-builder CLI is missing."
           }
-          if (-not (Test-Path "node_modules\electron\install.js")) {
-            throw "Electron install script is missing."
-          }
-
-      - name: Install Electron binary
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          node node_modules\electron\install.js
-          if ($LASTEXITCODE -ne 0) {
-            throw "Electron installation failed with exit code $LASTEXITCODE."
-          }
-          $electron = Get-ChildItem node_modules\electron\dist -Filter electron.exe -Recurse |
+          $electron = Get-ChildItem "node_modules\electron\dist" -Filter electron.exe -Recurse |
             Select-Object -First 1
           if (-not $electron) {
             throw "electron.exe was not installed."
@@ -128,6 +131,7 @@ jobs:
           if ($exitCode -ne 0) {
             throw "Tests failed with exit code $exitCode."
           }
+
           $summary = Select-String -Path validation\tests.tap -Pattern "^# tests (\d+)$" |
             Select-Object -Last 1
           if (-not $summary) {
@@ -145,8 +149,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $builder = Resolve-Path "node_modules\electron-builder\cli.js"
-          cmd.exe /d /s /c "node `"$builder`" --win nsis portable --publish never > validation\windows-build.log 2>&1"
+          cmd.exe /d /s /c "npm run dist:win > validation\windows-build.log 2>&1"
           $exitCode = $LASTEXITCODE
           Get-Content validation\windows-build.log
           if ($exitCode -ne 0) {
