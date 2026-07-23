@@ -1,0 +1,85 @@
+name: Install clean renderer checkpoint v3
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/install-clean-ui-v3.yml"
+      - "migration/ui-install-v3.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Composer 3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct verified renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat migration/ui-bundle/part-*.txt > /tmp/ui.b64
+          base64 --decode /tmp/ui.b64 > /tmp/ui.tar.gz
+          echo "c083093ec8b7bc28bb36a77bd14926104ad71232d09370968e385f3e3bfc5b2a  /tmp/ui.tar.gz" | sha256sum --check -
+          tar -xzf /tmp/ui.tar.gz
+          cp migration/repairs/publishing-controller.js src/ui/publishing-controller.js
+
+      - name: Validate renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/bootstrap.js
+          node --check src/ui/app.js
+          node --check src/ui/dock-manager.js
+          node --check src/ui/publishing-controller.js
+          node --check test/v126-clean-renderer-migration.test.js
+          node --test test/v126-clean-renderer-migration.test.js
+          test ! -e src/ui/publishing-ui.js
+          test ! -e src/ui/publishing-exposure.js
+          test ! -e src/release-bootstrap.js
+
+      - name: Save checkpoint and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/checkpoints
+          cat > docs/checkpoints/03B-clean-renderer-installed.md <<'EOF'
+          # Checkpoint 3B — Clean renderer source installed
+
+          Repository: `ktheagent/Airmonlink-composer-3`
+          Branch: `main`
+          Version: `1.1.0`
+          Build: `18`
+          Decision: **RELEASE BLOCKED**
+
+          Confirmed:
+          - renderer archive SHA-256 verified;
+          - corrupted publishing controller replaced by reviewed repository source;
+          - renderer JavaScript syntax checks passed;
+          - dedicated renderer migration tests passed;
+          - legacy publishing injectors remain absent.
+
+          Not confirmed:
+          - complete regression suite;
+          - Windows compilation or artifacts;
+          - installed application identity;
+          - visual staff-obstruction and docking acceptance;
+          - PDF/PNG page inspection;
+          - printer, MIDI, or audio hardware testing.
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bootstrap.js src/ui test/v126-clean-renderer-migration.test.js docs/checkpoints/03B-clean-renderer-installed.md
+          if git diff --cached --quiet; then
+            echo "No renderer changes to commit."
+            exit 0
+          fi
+          git commit -m "Install clean renderer checkpoint v3 [skip ci]"
+          git push origin HEAD:main
