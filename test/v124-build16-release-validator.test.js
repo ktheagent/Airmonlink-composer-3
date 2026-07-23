@@ -29,5 +29,14 @@ test('Build 18 release validator matches the direct verified publishing bootstra
   assert.match(validator, /publishing-controller\.js/);
   assert.match(validator, /pdfControls/);
   assert.match(validator, /pngControls/);
-  assert.doesNotMatch(validator, /release-bootstrap\.js|publishing-exposure\.js|publishing-ui\.js/);
+
+  assert.match(
+    validator,
+    /-not \$bootstrapSource\.Contains\("publishing-exposure\.js"\)/
+  );
+  assert.match(
+    validator,
+    /-not \$bootstrapSource\.Contains\("publishing-ui\.js"\)/
+  );
+  assert.doesNotMatch(validator, /release-bootstrap\.js/);
 });
