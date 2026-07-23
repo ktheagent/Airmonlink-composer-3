@@ -1,8 +1,10 @@
 'use strict';
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+
 const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
@@ -33,10 +35,17 @@ test('native publishing controls replace legacy print labels', () => {
     read('src/ui/app.js'),
     read('src/ui/publishing-controller.js')
   ].join('\n');
+
   for (const label of ['Dedicated PDF', 'PNG Pages', 'System Print']) {
     assert.match(html, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
-  for (const legacy of ['Print or PDF', 'Print / PDF', 'PDF Print / PDF', 'Build 12', 'Build 17']) {
+  for (const legacy of [
+    'Print or PDF',
+    'Print / PDF',
+    'PDF Print / PDF',
+    'Build 12',
+    'Build 17'
+  ]) {
     assert.equal(combined.includes(legacy), false, `legacy marker must be absent: ${legacy}`);
   }
 });
@@ -49,10 +58,11 @@ test('staff-safe layout uses structural rows and a scrollable score viewport', (
   assert.match(css, /min-height\s*:\s*0/i);
 });
 
-test('docking and publishing are normal renderer modules, not runtime injectors', () => {
+test('docking and publishing are norma renderer modules, not runtime injectors', () => {
   const docking = read('src/ui/dock-manager.js');
   const publishing = read('src/ui/publishing-controller.js');
   const bootstrap = read('src/bootstrap.js');
+
   assert.match(docking, /AirmonDockManager/);
   assert.match(docking, /dragstart|pointerdown|mousedown/i);
   assert.match(docking, /drop/i);
@@ -63,16 +73,20 @@ test('docking and publishing are normal renderer modules, not runtime injectors'
   assert.equal(bootstrap.includes('publishing-exposure.js'), false);
 });
 
-test('Build 18 identity is consistent in renderer and bootstrap', () => {
-  const combined = [
-    read('src/bootstrap.js'),
-    read('src/ui/index.html'),
-    read('src/ui/app.js'),
-    read('src/ui/publishing-controller.js')
-  ].join('\n');
-  assert.match(combined, /Build 18/);
-  assert.match(read('src/bootstrap.js'), /const BUILD = 18/);
-  assert.match(read('src/ui/app.js'), /build:\s*18/);
-  assert.match(read('src/ui/publishing-controller.js'), /BUILD = 18/);
-  assert.equal(combined.includes('Build 17'), false);
+test('Build 18 identity is consistent in package, HTML, controller and bootstrap', () => {
+  const pkg = require('../package.json');
+  const html = read('src/ui/index.html');
+  const controller = read('src/ui/publishing-controller.js');
+  const bootstrap = read('src/bootstrap.js');
+
+  assert.equal(pkg.buildNumber, '18');
+  assert.equal(pkg.build.buildVersion, '1.1.0.18');
+  assert.match(pkg.build.nsis.artifactName, /Build18/);
+  assert.match(pkg.build.portable.artifactName, /Build18/);
+  assert.match(html, /Build 18/);
+  assert.match(html, /data-build-18-badge/);
+  assert.match(controller, /const BUILD = 18;/);
+  assert.match(controller, /build:\s*BUILD/);
+  assert.match(bootstrap, /const BUILD = 18;/);
+  assert.doesNotMatch([html, controller, bootstrap].join('\n'), /Build 17/);
 });
