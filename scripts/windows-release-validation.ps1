@@ -1,7 +1,7 @@
 param(
   [string]$ReleaseDirectory = "release",
   [string]$ValidationDirectory = "validation",
-  [int]$ExpectedBuild = 17
+  [int]$ExpectedBuild = 18
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,7 +64,9 @@ Assert-Check ([string]$package.build.portable.artifactName -match "Build$Expecte
 $requiredSource = @(
   "src\bootstrap.js",
   "src\desktop\publishing.js",
-  "src\ui\publishing-ui.js",
+  "src\ui\index.html",
+  "src\ui\publishing-controller.js",
+  "src\ui\dock-manager.js",
   "test\v122-dedicated-publishing.test.js",
   "test\v125-build17-static-publishing.test.js"
 )
@@ -76,15 +78,23 @@ foreach ($relative in $requiredSource) {
 }
 
 $bootstrapPath = Join-Path $root "src\bootstrap.js"
+$controllerPath = Join-Path $root "src\ui\publishing-controller.js"
+$htmlPath = Join-Path $root "src\ui\index.html"
+
 $bootstrapSource = if (Test-Path $bootstrapPath) {
   Get-Content $bootstrapPath -Raw
 } else {
   ""
 }
 
-$uiPath = Join-Path $root "src\ui\publishing-ui.js"
-$uiSource = if (Test-Path $uiPath) {
-  Get-Content $uiPath -Raw
+$controllerSource = if (Test-Path $controllerPath) {
+  Get-Content $controllerPath -Raw
+} else {
+  ""
+}
+
+$htmlSource = if (Test-Path $htmlPath) {
+  Get-Content $htmlPath -Raw
 } else {
   ""
 }
@@ -93,41 +103,73 @@ Assert-Check ($bootstrapSource.Contains("const BUILD = $ExpectedBuild;")) `
   "Bootstrap build identity" `
   "src/bootstrap.js declares Build $ExpectedBuild"
 
-Assert-Check ($bootstrapSource.Contains("publishing-ui.js")) `
-  "Publishing UI source wiring" `
-  "src/bootstrap.js loads publishing-ui.js"
+Assert-Check ($bootstrapSource.Contains("window.AirmonPublishingUI")) `
+  "Publishing API verification" `
+  "Bootstrap verifies the direct publishing API"
 
-Assert-Check ($bootstrapSource.Contains("publishing-ui-ready")) `
+Assert-Check ($bootstrapSource.Contains("window.AirmonDockManager")) `
+  "Docking API verification" `
+  "Bootstrap verifies the direct docking API"
+
+Assert-Check ($bootstrapSource.Contains("native-ui-ready")) `
   "Renderer verification logging" `
-  "src/bootstrap.js records publishing-ui-ready"
+  "Bootstrap records native-ui-ready"
 
-Assert-Check ($bootstrapSource.Contains("result.pdfControls < 2")) `
+Assert-Check ($bootstrapSource.Contains("publishingResult.pdfControls < 2")) `
   "PDF control verification" `
   "Bootstrap requires at least two PDF controls"
 
-Assert-Check ($bootstrapSource.Contains("result.pngControls < 2")) `
+Assert-Check ($bootstrapSource.Contains("publishingResult.pngControls < 2")) `
   "PNG control verification" `
   "Bootstrap requires at least two PNG controls"
 
 Assert-Check (-not $bootstrapSource.Contains("publishing-exposure.js")) `
-  "Legacy exposure bootstrap disabled" `
-  "Bootstrap no longer loads publishing-exposure.js"
+  "Legacy exposure disabled" `
+  "Bootstrap does not load publishing-exposure.js"
 
-Assert-Check ($uiSource.Contains("const BUILD = $ExpectedBuild;")) `
-  "Publishing UI build identity" `
-  "publishing-ui.js declares Build $ExpectedBuild"
+Assert-Check (-not $bootstrapSource.Contains("publishing-ui.js")) `
+  "Legacy publishing UI disabled" `
+  "Bootstrap does not load publishing-ui.js"
 
-Assert-Check ($uiSource.Contains("Dedicated PDF")) `
-  "Dedicated PDF visible source" `
-  "publishing-ui.js contains Dedicated PDF controls"
+Assert-Check ($controllerSource.Contains("const BUILD = $ExpectedBuild;")) `
+  "Publishing controller build identity" `
+  "publishing-controller.js declares Build $ExpectedBuild"
 
-Assert-Check ($uiSource.Contains("PNG Pages")) `
-  "PNG pages visible source" `
-  "publishing-ui.js contains PNG Pages controls"
+Assert-Check ($controllerSource.Contains("window.AirmonPublishingUI")) `
+  "Publishing controller API" `
+  "publishing-controller.js exposes AirmonPublishingUI"
 
-Assert-Check (-not $uiSource.Contains("MutationObserver")) `
+Assert-Check ($controllerSource.Contains("beginPdf")) `
+  "Dedicated PDF controller" `
+  "publishing-controller.js exposes beginPdf"
+
+Assert-Check ($controllerSource.Contains("beginPng")) `
+  "PNG pages controller" `
+  "publishing-controller.js exposes beginPng"
+
+Assert-Check ($controllerSource.Contains("showPngPage")) `
+  "PNG page selection" `
+  "publishing-controller.js exposes showPngPage"
+
+Assert-Check (-not $controllerSource.Contains("MutationObserver")) `
   "No whole-document publishing observer" `
-  "publishing-ui.js does not use MutationObserver"
+  "publishing-controller.js does not use MutationObserver"
+
+Assert-Check ($htmlSource.Contains("Dedicated PDF")) `
+  "Dedicated PDF visible source" `
+  "index.html contains Dedicated PDF controls"
+
+Assert-Check ($htmlSource.Contains("PNG Pages")) `
+  "PNG pages visible source" `
+  "index.html contains PNG Pages controls"
+
+Assert-Check ($htmlSource.Contains("System Print")) `
+  "System print visible source" `
+  "index.html contains System Print controls"
+
+Assert-Check ($htmlSource.Contains("data-build-18-badge")) `
+  "Build 18 badge source" `
+  "index.html contains the Build 18 badge marker"
 
 Assert-Check (Test-Path $setupPath) `
   "Setup artifact exists" `
@@ -194,7 +236,7 @@ $hashLines = @()
 foreach ($file in @($setupPath, $portablePath)) {
   if (Test-Path $file) {
     $hash = Get-FileHash $file -Algorithm SHA256
-    $hashLines += "$($hash.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))"
+    $hashLines += "$($hash.Hash.ToLowerInvariant()) $([IO.Path]::GetFileName($file))"
   }
 }
 
@@ -237,37 +279,68 @@ if (Test-Path $portablePath) {
   }
 
   $ready = $records |
-    Where-Object { $_.stage -eq "publishing-ui-ready" } |
+    Where-Object { $_.stage -eq "native-ui-ready" } |
     Select-Object -Last 1
 
   Assert-Check ($null -ne $ready) `
-    "Built renderer publishing proof" `
-    "Portable executable reported publishing-ui-ready"
+    "Built renderer native UI proof" `
+    "Portable executable reported native-ui-ready"
 
   if ($null -ne $ready) {
-    Assert-Check ([int]$ready.build -eq $ExpectedBuild) `
-      "Built renderer build identity" `
-      "Renderer reported Build $($ready.build)"
+    $publishingReady = $ready.publishing
+    $dockingReady = $ready.docking
 
-    Assert-Check ([bool]$ready.api) `
-      "Built renderer publishing API" `
-      "Renderer publishing API is active"
+    Assert-Check ($null -ne $publishingReady) `
+      "Built renderer publishing record" `
+      "native-ui-ready contains publishing details"
 
-    Assert-Check ([int]$ready.pdfControls -ge 2) `
-      "Built renderer PDF controls" `
-      "Renderer reported $($ready.pdfControls) PDF controls"
+    Assert-Check ($null -ne $dockingReady) `
+      "Built renderer docking record" `
+      "native-ui-ready contains docking details"
 
-    Assert-Check ([int]$ready.pngControls -ge 2) `
-      "Built renderer PNG controls" `
-      "Renderer reported $($ready.pngControls) PNG controls"
+    if ($null -ne $publishingReady) {
+      Assert-Check ([int]$publishingReady.build -eq $ExpectedBuild) `
+        "Built renderer build identity" `
+        "Renderer reported Build $($publishingReady.build)"
 
-    Assert-Check ([bool]$ready.badge) `
-      "Built renderer Build 17 badge" `
-      "Renderer reported visible Build 17 badge"
+      Assert-Check ([bool]$publishingReady.api) `
+        "Built renderer publishing API" `
+        "Renderer publishing API is active"
 
-    Assert-Check ([bool]$ready.status) `
-      "Built renderer publishing status" `
-      "Renderer reported visible publishing status"
+      Assert-Check ([bool]$publishingReady.native) `
+        "Built renderer native controls" `
+        "Renderer reported native publishing controls"
+
+      Assert-Check ([int]$publishingReady.pdfControls -ge 2) `
+        "Built renderer PDF controls" `
+        "Renderer reported $($publishingReady.pdfControls) PDF controls"
+
+      Assert-Check ([int]$publishingReady.pngControls -ge 2) `
+        "Built renderer PNG controls" `
+        "Renderer reported $($publishingReady.pngControls) PNG controls"
+
+      Assert-Check ([bool]$publishingReady.badge) `
+        "Built renderer Build 18 badge" `
+        "Renderer reported a visible Build 18 badge"
+
+      Assert-Check ([bool]$publishingReady.status) `
+        "Built renderer publishing status" `
+        "Renderer reported visible publishing status"
+    }
+
+    if ($null -ne $dockingReady) {
+      Assert-Check ([int]$dockingReady.handles -ge 3) `
+        "Built renderer docking handles" `
+        "Renderer reported $($dockingReady.handles) docking handles"
+
+      Assert-Check ([bool]$dockingReady.dropZone) `
+        "Built renderer docking drop zone" `
+        "Renderer reported an active docking drop zone"
+
+      Assert-Check ([int]$dockingReady.panels -ge 3) `
+        "Built renderer docking panels" `
+        "Renderer reported $($dockingReady.panels) dockable panels"
+    }
   }
 
   if ($alive) {
@@ -301,7 +374,7 @@ $jsonPath = Join-Path $validation "windows-release-validation.json"
 $csvPath = Join-Path $validation "windows-release-validation.csv"
 $textPath = Join-Path $validation "windows-release-validation.txt"
 
-$rows | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 $jsonPath
+$rows | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 $jsonPath
 $rows | Export-Csv -NoTypeInformation -Encoding utf8 $csvPath
 $rows | Format-Table -AutoSize | Out-String |
   Set-Content -Encoding utf8 $textPath
