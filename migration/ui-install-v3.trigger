@@ -1,0 +1,3 @@
+Trigger clean renderer installer v3.
+Canonical bundle SHA-256: c083093ec8b7bc28bb36a77bd14926104ad71232d09370968e385f3e3bfc5b2a
+Repair source: migration/repairs/publishing-controller.js
