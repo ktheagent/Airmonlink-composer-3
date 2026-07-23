@@ -5,6 +5,7 @@ name: Port proven Composer renderer
     branches: [main]
     paths:
       - "docs/checkpoints/05-renderer-port.trigger"
+      - ".github/workflows/port-proven-renderer.yml"
   workflow_dispatch:
 
 permissions:
