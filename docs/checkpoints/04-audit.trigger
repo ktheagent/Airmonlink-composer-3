@@ -1,4 +1,4 @@
 Complete Composer 3 source audit trigger.
-Audit exact commit, syntax, lint, and every test file.
-Audit the restored full renderer committed as b6442c6 on 2026-07-23.
-No Windows release is authorized until this audit is green.
+Audit the exact current main commit, syntax, lint, every test file, and the Build 18 Windows validator.
+This trigger follows the Build 18 publishing-test and validator corrections completed on 2026-07-23.
+Do not authorize the Windows release unless the generated audit report concludes PASS.
