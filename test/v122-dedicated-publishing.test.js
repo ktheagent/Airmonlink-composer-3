@@ -1,9 +1,14 @@
+'use strict';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const publishing = require('../src/desktop/publishing');
+
+const root = path.join(__dirname, '..');
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('publishing request sanitizes filenames and preserves physical dimensions', () => {
   const request = publishing.normalizePublishRequest({
@@ -47,18 +52,26 @@ test('private publishing URL accepts only strict PDF and PNG commands', () => {
   assert.equal(pdf.request.width, 794);
   assert.equal(pdf.request.height, 1123);
 
-  const png = publishing.publishingUrl('AIRMON-PUBLISH://PNG?view=score&title=Anthem');
+  const png = publishing.publishingUrl(
+    'AIRMON-PUBLISH://PNG?view=score&title=Anthem'
+  );
   assert.equal(png.kind, 'png');
   assert.equal(png.request.view, 'score');
 });
 
 test('PDF and PNG signatures are validated before success', () => {
   assert.doesNotThrow(() => publishing.assertPdfBuffer(Buffer.from('%PDF-1.7')));
-  assert.throws(() => publishing.assertPdfBuffer(Buffer.from('bad')), /invalid|no document/i);
+  assert.throws(
+    () => publishing.assertPdfBuffer(Buffer.from('bad')),
+    /invalid|no document/i
+  );
   assert.doesNotThrow(() =>
     publishing.assertPngBuffer(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]))
   );
-  assert.throws(() => publishing.assertPngBuffer(Buffer.from('bad')), /invalid|no image/i);
+  assert.throws(
+    () => publishing.assertPngBuffer(Buffer.from('bad')),
+    /invalid|no image/i
+  );
 });
 
 test('atomic single-file write leaves no temporary file', async () => {
@@ -105,22 +118,36 @@ test('atomic PNG batch restores old files when installation fails', async () => 
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
-test('desktop backend and renderer expose dedicated PDF and numbered PNG publishing', () => {
-  const bootstrap = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
-  const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'publishing-ui.js'), 'utf8');
+test('desktop backend and direct renderer expose dedicated PDF and numbered PNG publishing', () => {
+  const bootstrap = read('src/bootstrap.js');
+  const controller = read('src/ui/publishing-controller.js');
+  const html = read('src/ui/index.html');
+
   assert.match(bootstrap, /printToPDF/);
   assert.match(bootstrap, /capturePage/);
   assert.match(bootstrap, /showSaveDialog/);
-  assert.match(ui, /Dedicated PDF/);
-  assert.match(ui, /PNG Pages/);
-  assert.match(ui, /score-page-sheet/);
+  assert.match(bootstrap, /AirmonPublishingUI/);
+
+  assert.match(controller, /const BUILD = 18;/);
+  assert.match(controller, /AirmonPublishingUI/);
+  assert.match(controller, /beginPdf/);
+  assert.match(controller, /beginPng/);
+  assert.match(controller, /showPngPage/);
+  assert.match(controller, /data-publish="pdf"/);
+  assert.match(controller, /data-publish="png"/);
+  assert.doesNotMatch(controller, /MutationObserver/);
+
+  assert.match(html, /Dedicated PDF/);
+  assert.match(html, /PNG Pages/);
+  assert.match(html, /System Print/);
+  assert.match(html, /publishing-controller\.js/);
 });
 
-test('Build 17 package metadata names both Windows artifacts consistently', () => {
+test('Build 18 package metadata names both Windows artifacts consistently', () => {
   const pkg = require('../package.json');
   assert.equal(pkg.main, 'src/bootstrap.js');
-  assert.equal(pkg.buildNumber, '17');
-  assert.equal(pkg.build.buildVersion, '1.1.0.17');
-  assert.match(pkg.build.nsis.artifactName, /Build17/);
-  assert.match(pkg.build.portable.artifactName, /Build17/);
+  assert.equal(pkg.buildNumber, '18');
+  assert.equal(pkg.build.buildVersion, '1.1.0.18');
+  assert.match(pkg.build.nsis.artifactName, /Build18/);
+  assert.match(pkg.build.portable.artifactName, /Build18/);
 });
