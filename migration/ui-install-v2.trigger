@@ -1,3 +1,4 @@
-Trigger split clean renderer workflow v2.
+Trigger repaired clean renderer installer vst.
 Canonical bundle SHA-256: c083093ec8b7bc28bb36a77bd14926104ad71232d09370968e385f3e3bfc5b2a
-Checkpoint trigger sequence: 3
+Repair source: migration/repairs/publishing-controller.js
+Trigger sequence: 4
