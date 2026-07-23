@@ -1,29 +1,16 @@
-name: Install verified clean renderer
+name: Clean UI installer (retired)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/install-clean-ui.yml"
-      - "scripts/install-clean-ui.sh"
-      - "migration/ui-install.trigger"
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: composer-3-clean-renderer-install
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  install:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Reconstruct, validate, and commit renderer
-        shell: bash
-        run: bash scripts/install-clean-ui.sh
+      - name: Migration retired
+        run: |
+          echo "This source-modifying migration workflow is retired."
+          echo "Composer 3 source is committed directly and validated by validate-composer-3.yml."
