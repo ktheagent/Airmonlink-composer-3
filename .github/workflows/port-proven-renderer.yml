@@ -13,12 +13,12 @@ permissions:
 
 concurrency:
   group: port-proven-renderer-main
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   port:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout Composer 3
         uses: actions/checkout@v5
@@ -29,10 +29,14 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "24"
-          cache: npm
 
-      - name: Install locked dependencies
-        run: npm ci
+      - name: Confirm port uses Node built-ins only
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "require('./package.json')"
+          node --check scripts/lint.js
+          node --check scripts/port-proven-renderer.js
 
       - name: Check out proven renderer source
         run: git clone --depth 1 https://github.com/ktheagent/Airmonlink-composer-2.git /tmp/proven-source
@@ -47,10 +51,10 @@ jobs:
           node --check src/ui/app.js
           node --check scripts/port-proven-renderer.js
           node --check src/ui/publishing-controller.js
-          node --check src/ui/dock-manager.js 
+          node --check src/ui/dock-manager.js
 
       - name: Run lint
-        run: npm run lint
+        run: node scripts/lint.js
 
       - name: Run genuine regression tests
         run: node --test test/v092-shutdown-lifecycle.test.js test/v120-build14-command-groups.test.js test/v120-build14-windows-association.test.js
@@ -68,7 +72,15 @@ jobs:
           grep -Fq 'System Print' src/ui/index.html
           grep -Fq 'publishing-controller.js' src/ui/index.html
           grep -Fq 'dock-manager.js' src/ui/index.html
-          ! grep -R -n -E 'Print or PDF|Print / PDF|Build 12|Build 17' src/ui/app.js src/ui/index.html
+
+      - name: Reject retired markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E 'Print or PDF|Print / PDF|Build 12|Build 17' src/ui/app.js src/ui/index.html; then
+            echo "Retired renderer markers were found." >&2
+            exit 1
+          fi
 
       - name: Commit verified renderer port
         shell: bash
@@ -78,7 +90,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/ui/app.js src/ui/index.html src/ui/styles.css src/ui/staff-key-rules.css
           if git diff --cached --quiet; then
-            echo "No renderer changes were produced."
+            echo "No renderer changes were produced." >&2
             exit 1
           fi
           git commit -m "Restore proven full renderer and Build 18 publishing [skip ci]"
