@@ -5,8 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/install-clean-ui-v2.yml"
-      - "scripts/install-clean-ui.sh"
       - "migration/ui-install-v2.trigger"
+      - "test/v126-clean-renderer-migration.test.js"
   workflow_dispatch:
 
 permissions:
@@ -21,9 +21,116 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Composer 3
+        uses: actions/checkout4v4
         with:
           fetch-depth: 0
-      - name: Reconstruct, validate, and commit renderer
+
+      - name: Reconstruct archive
         shell: bash
-        run: bash scripts/install-clean-ui.sh
+        run: |
+          set -euo pipefail
+          cat migration/ui-bundle/part-*.txt > /tmp/composer3-ui.b64
+          base64 --decode /tmp/composer3-ui.b64 > /tmp/composer3-ui.tar.gz
+
+
+      - name: Verify archive hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "c083093ec8b7bc28bb36a77bd14926104ad71232d09370968e385f3e3bfc5b2a  /tmp/composer3-ui.tar.gz" | sha256sum --check -
+
+      - name: Verify archive file list
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -tzf /tmp/composer3-ui.tar.gz | sort > /tmp/actual-files.txt
+          cat > /tmp/expected-files.txt <<'EOF'
+          src/bootstrap.js
+          src/ui/app.js
+          src/ui/dock-manager.js
+          src/ui/index.html
+          src/ui/publishing-controller.js
+          src/ui/styles.css
+          EOF
+          sort -o /tmp/expected-files.txt /tmp/expected-files.txt
+          diff -u /tmp/expected-files.txt /tmp/actual-files.txt
+
+      - name: Extract renderer source
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf /tmp/composer3-ui.tar.gz
+
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/bootstrap.js
+          node --check src/ui/app.js
+          node --check src/ui/dock-manager.js
+          node --check src/ui/publishing-controller.js
+          node --check test/v126-clean-renderer-migration.test.js
+
+      - name: Run clean renderer regression tests
+        shell: bash
+        run: node --test test/v126-clean-renderer-migration.test.js
+
+      - name: Verify legacy interface remains absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e src/ui/publishing-ui.js
+          test ! -e src/ui/publishing-exposure.js
+          test ! -e src/release-bootstrap.js
+          ! grep -R -n -E 'Print or PDF|Print / PDF|PDF Print / PDF|Build 12' src/ui
+
+      - name: Save Checkpoint 3B
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/checkpoints
+          cat > docs/checkpoints/03B-clean-renderer-installed.md <<'EOF'
+          # Checkpoint 3B — Clean renderer source installed
+
+          Repository: `ktheagent/Airmonlink-composer-3`
+          Branch: `main`
+          Decision: **RELEASE BLOCKED**
+
+          Installed from repository bundle SHA-256:
+          `c083093ec8b7bc28bb36a77bd14926104ad71232d09370968e385f3e3bfc5b2a`
+
+          Confirmed at this checkpoint:
+          - exact six-file archive allowlist;
+          - JavaScript syntax checks passed;
+          - dedicated clean-renderer regression tests passed;
+          - obsolete publishing injectors and Build 12 labels are absent;
+          - new renderer source and clean bootstrap are committed.
+
+          Still not confirmed:
+          - full regression suite;
+          - compiled Windows runtime;
+          - staff visibility at required window sizes;
+          - physical mouse docking acceptance;
+          - PDF and PNG output inspection;
+          - performance measurements;
+          - installed application identity;
+          - printer, MIDI, or audio hardware testing.
+
+          No download is approved.
+          EOF
+
+      - name: Commit renderer checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bootstrap.js src/ui test/v126-clean-renderer-migration.test.js docs/checkpoints/03B-clean-renderer-installed.md
+          if git diff --cached --quiet; then
+            echo "Renderer already installed; no commit required."
+            exit 0
+          fi
+          git commit -m "Install verified clean renderer checkpoint [skip ci]"
+          git push origin HEAD:main
