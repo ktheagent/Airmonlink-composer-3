@@ -1,6 +1,10 @@
 name: Import proven engine without legacy interface
 
 "on":
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/engine-migration.yml"
   workflow_dispatch:
 
 permissions:
@@ -10,7 +14,7 @@ jobs:
   migrate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout4
         with:
           path: current
           ref: main
