@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en" data-interface-version="3">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Airmonlink Composer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="ui-v3">
+  <div id="app" class="app-shell" data-native-ui="18">
+    <header class="titlebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">A</span>
+        <div>
+          <strong>Airmonlink Composer</strong>
+          <small id="documentTitle">Untitled Score</small>
+        </div>
+        <span class="build-badge" data-build-18-badge="true">Build 18 · Clean UI</span>
+      </div>
+      <div class="title-actions">
+        <span class="publishing-status" data-build-18-status="true">Publishing ready</span>
+        <button type="button" data-command="save">Save</button>
+      </div>
+    </header>
+
+    <nav class="menu-bar" aria-label="Application menu">
+      <details>
+        <summary>File</summary>
+        <div class="menu">
+          <button type="button" data-command="new">New score</button>
+          <button type="button" data-command="open">Open…</button>
+          <button type="button" data-command="save">Save</button>
+          <button type="button" data-command="save-as">Save As…</button>
+          <hr />
+          <button type="button" data-command="exit">Exit</button>
+        </div>
+      </details>
+      <details>
+        <summary>Edit</summary>
+        <div class="menu">
+          <button type="button" data-command="undo">Undo</button>
+          <button type="button" data-command="redo">Redo</button>
+        </div>
+      </details>
+      <details>
+        <summary>View</summary>
+        <div class="menu">
+          <button type="button" data-view="score">Staff notation</button>
+          <button type="button" data-view="solfa">Tonic Sol-fa</button>
+          <hr />
+          <button type="button" data-toggle-panel="composition">Composition panel</button>
+          <button type="button" data-toggle-panel="inspector">Inspector</button>
+          <button type="button" data-toggle-panel="tonic">Tonic Sol-fa panel</button>
+        </div>
+      </details>
+      <details>
+        <summary>Score</summary>
+        <div class="menu">
+          <button type="button" data-note="60">Insert C4</button>
+          <button type="button" data-note="62">Insert D4</button>
+          <buttton>
+      </details>
+      <details>
+        <summary>Play</summary>
+        <div class="menu">
+          <button type="button" data-command="play">Play</button>
+          <button type="button" data-command="stop">Stop</button>
+        </div>
+      </details>
+      <details>
+        <summary>Tools</summary>
+        <div class="menu">
+          <button type="button" data-toggle-panel="composition">Composition notepad</button>
+          <button type="button" data-toggle-panel="inspector">Score inspector</button>
+          <button type="button" data-toggle-panel="tonic">Tonic Sol-fa</button>
+        </div>
+      </details>
+      <details>
+        <summary>Export</summary>
+        <div class="menu">
+          <button type="button" data-publish-kind="pdf">Dedicated PDF…</button>
+          <button type="button" data-publish-kind="png">PNG Pages…</button>
+          <button type="button" data-command="system-print">System Print…</button>
+          <button type="button" data-command="show-export">Publishing options…</button>
+        </div>
+      </details>
+      <details>
+        <summary>Help</summary>
+        <div class="menu">
+          <button type="button" data-command="about">About Airmonlink Composer</button>
+        </div>
+      </details>
+    </nav>
+
+    <section class="editor-toolbar" aria-label="Score entry toolbar">
+      <div class="tool-group" aria-label="File">
+        <button type="button" data-command="new" title="New score">New</button>
+        <button type="button" data-command="open" title="Open score">Open</button>
+        <button type="button" data-command="save" title="Save score">Save</button>
+      </div>
+      <div class="tool-group" aria-label="History">
+        <button type="button" data-command="undo">Undo</button>
+        <button type="button" data-command="redo">Redo</button>
+      </div>
+      <div class="tool-group" aria-label="Duration">
+        <button type="button" data-duration="2">Half</button>
+        <button type="buttton" data-duration="1" class="active">Quarter</button>
+        <button type="button" data-duration=".5">Eighth</button>
+      </div>
+      <div class="tool-group note-entry" aria-label="Pitch">
+        <button type="button" data-note="60">C</button>
+        <button type="buttton" data-note="62">D</button>
+        <button type="button" data-note="64">E</button>
+        <button type="button" data-note="65">F</button>
+        <button type="button" data-note="67">G</button>
+        <button type="button" data-note="69">A</button>
+        <button type="button" data-note="71">B</button>
+        <button type="button" data-command="rest">Rest</button>
+      </div>
+      <div class="tool-group" aria-label="Playback">
+        <button type="button" data-command="play">Play</button>
+        <button type="button" data-command="stop">Stop</button>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <label class="zoom-control">Zoom
+        <input id="zoomRange" type="range" min="60" max="160" value="100" />
+        <output id="zoomValue">100%</output>
+      </label>
+    </section>
+
+    <main class="workspace">
+      <aside class="left-tools" aria-label="Quick tools">
+        <button type="button" data-view="score" class="active">Staff</button>
+        <button type="button" data-view="solfa">Sol-fa</button>
+        <button type="button" data-toggle-panel="composition">Notes</button>
+        <button type="button" data-command="show-export">Publish</button>
+      </aside>
+
+      <section class="score-workspace" aria-label="Score workspace">
+        <div class="score-tabs">
+          <button type="button" data-view="score" class="active">Staff notation</button>
+          <button type="button" data-view="solfa">Tonic Sol-fa</button>
+          <span id="dirtyIndicator" class="dirty-indicator" aria-live="polite">Saved</span>
+        </div>
+        <div id="scoreViewport" class="score-viewport">
+          <article id="scorePage" class="score-page">
+            <header class="page-header">
+              <h1 id="pageTitle">Untitled Score</h1>
+              <p id="pageComposer">Composer</p>
+            </header>
+            <div id="notationCanvas" class="notation-canvas" aria-label="Rendered staff notation"></div>
+          </article>
+          <article id="solfaPage" class="score-page hidden">
+            <header class="page-header">
+              <h1 id="solfaTitle">Untitled Score</h1>
+              <p>Tonic Sol-fa view</p>
+            </header>
+            <div id="solfaCanvas" class="solfa-sheet"></div>
+          </article>
+        </div>
+      </section>
+
+      <aside id="rightDock" class="right-dock" aria-label="Docked panels">
+        <div id="rightDockDropZone" class="dock-drop-zone" aria-hidden="true">Drop panel here</div>
+
+        <section class="dock-panel" data-dock-panel="composition">
+          <header class="panel-heading" data-dock-handle="composition" title="Drag panel to float or dock">
+            <strong>Composition Notepad</strong>
+            <button type="button" data-float-panel="composition">Float</button>
+          </header>
+          <textarea id="compositionNotes" rows="8" placeholder="Private composition notes"></textarea>
+        </section>
+
+        <section class="dock-panel" data-dock-panel="inspector">
+          <header class="panel-heading" data-dock-handle="inspector" title="Drag panel to float or dock">
+            <strong>Inspector</strong>
+            <button type="button" data-float-panel="inspector">Float</button>
+          </header>
+          <div class="form-grid">
+            <label>Title<input id="titleInput" type="text" /></label>
+            <label>Composer<input id="composerInput" type="text" /></label>
+            <label>Key<input id="keyInput" type="text" /></label>
+            <label>Tempo<input id="tempoInput" type="number" min="20" max="320" /></label>
+            <label>Active part<select id="partSelect"></select></label>
+          </div>
+        </section>
+
+        <section class="dock-panel" data-dock-panel="tonic">
+          <header class="panel-heading" data-dock-handle="tonic" title="Drag panel to float or dock">
+            <strong>Tonic Sol-fa</strong>
+            <button type="button" data-float-panel="tonic">Float</button>
+          </header>
+          <p class="panel-copy">The Sol-fa view is generated from the same score data. Linked editing remains a release-gated checkpoint.</p>
+          <button type="button" data-view="solfa">Open Sol-fa view</button>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <span id="statusMessage">Clean renderer initialized.</span>
+      <span id="scoreSummary">0 notes</span>
+      <span>Airmonlink Composer 1.1.0 · Build 18</span>
+    </footer>
+  </div>
+
+  <dialog id="exportDialog">
+    <form method="dialog" class="dialog-shell">
+      <header><h2>Publish score</h2><button value="cancel" aria-label="Close">×</button></header>
+      <div class="export-grid">
+        <button type="button" class="export-card" data-publish-kind="pdf">
+          <span>PDF</span><strong>Dedicated PDF</strong><small>Direct multi-page publishing</small>
+        </button>
+        <button type="button" class="export-card" data-publish-kind="png">
+          <span>PNG</span><strong>PNG Pages</strong><small>Numbered high-resolution pages</small>
+        </button>
+        <button type="button" class="export-card" data-command="system-print">
+          <span>SYS</span><strong>System Print</strong><small>Operating-system print fallback</small>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="aboutDialog">
+    <form method="dialog" class="dialog-shell about">
+      <header><h2>About</h2><button value="cancel" aria-label="Close">×</button></header>
+      <p><strong>Airmonlink Composer 1.1.0 · Build 18</strong></p>
+      <p>Clean renderer migration. Release remains blocked until every audit checkpoint passes.</p>
+    </form>
+  </dialog>
+
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script src="../core/music-theory.js"></script>
+  <script src="../core/score-model.js"></script>
+  <script src="../core/airscore.js"></script>
+  <script src="app.js"></script>
+  <script src="publishing-controller.js"></script>
+  <script src="dock-manager.js"></script>
+</body>
+</html>
