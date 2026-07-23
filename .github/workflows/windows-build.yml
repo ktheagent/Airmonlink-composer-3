@@ -2,16 +2,185 @@ name: Validate and Build Windows Release
 
 "on":
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/windows-build.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: windows-build-main
+  cancel-in-progress: false
+
 jobs:
-  release-blocked:
-    name: Release gate
+  windows:
+    name: Validate and build Windows x64
     runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
     steps:
-      - name: Block unapproved release builds
+      - name: Checkout exact commit
+        uses: actions/checkout4v4
+
+      - name: Confirm green source audit
         shell: pwsh
         run: |
-          throw "RELEASE BLOCKED: enable the full Windows workflow only after source, regression, visual, publishing, performance, installed-app and self-critique checkpoints pass."
+          $ErrorActionPreference = "Stop"
+          $report = Get-Content "docs/checkpoints/04-full-test-audit.md" -Raw
+          if (-not $report.Contains("Audit conclusion: **PASS**")) {
+            throw "The committed source audit is not green."
+          }
+          if (-not $report.Contains("Failing test files: ``0``")) {
+            throw "The committed source audit still records failing test files."
+          }
+
+      - name: Parse PowerShell release validator
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tokens = $null
+          $errors = $null
+          [Void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ".\scripts\windows-release-validation.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "PowerShell release validator contains $($errors.Count) parse error(s)."
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.2
+
+      - name: Enable pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.14.0 --activate
+          pnpm --version
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue
+          Remove-Item Env:NPM_CONFIG_PRODUCTION -ErrorAction SilentlyContinue
+          Remove-Item Env:NPM_CONFIG_OMIT -ErrorAction SilentlyContinue
+          if (Test-Path node_modules) {
+            Remove-Item node_modules -Recurse -Force
+          }
+          if (Test-Path pnpm-lock.yaml) {
+            Remove-Item pnpm-lock.yaml -Force
+          }
+          pnpm import
+          if ($LASTEXITCODE -ne 0) {
+            throw "pnpm import failed with exit code $LASTEXITCODE."
+          }
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) {
+            throw "pnpm install failed with exit code $LASTEXITCODE."
+          }
+          if (-not (Test-Path "node_modules\electron-builder\cli.js")) {
+            throw "electron-builder CLI is missing."
+          }
+          if (-not (Test-Path "node_modules\electron\install.js")) {
+            throw "Electron install script is missing."
+          }
+
+      - name: Install Electron binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          node node_modules\electron\install.js
+          if ($LASTEXITCODE -ne 0) {
+            throw "Electron installation failed with exit code $LASTEXITCODE."
+          }
+          $electron = Get-ChildItem node_modules\electron\dist -Filter electron.exe -Recurse |
+            Select-Object -First 1
+          if (-not $electron) {
+            throw "electron.exe was not installed."
+          }
+
+      - name: Lint JavaScript
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          npm run lint
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lint failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Run complete automated test suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force validation | Out-Null
+          cmd.exe /d /s /c "npm test > validation\tests.tap 2>&1"
+          $exitCode = $LASTEXITCODE
+          Get-Content validation\tests.tap
+          if ($exitCode -ne 0) {
+            throw "Tests failed with exit code $exitCode."
+          }
+          $summary = Select-String -Path validation\tests.tap -Pattern "^# tests (\d+)$" |
+            Select-Object -Last 1
+          if (-not $summary) {
+            throw "TAP test count was not found."
+          }
+          $count = [int]$summary.Matches[0].Groups[1].Value
+          if ($count -lt 160) {
+            throw "Expected at least 160 tests; found $count."
+          }
+          if (Select-String -Path validation\tests.tap -Pattern "^# fail [1-9]") {
+            throw "TAP reported failures."
+          }
+
+      - name: Build Windows installer and portable application
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $builder = Resolve-Path "node_modules\electron-builder\cli.js"
+          cmd.exe /d /s /c "node `"$builder`" --win nsis portable --publish never > validation\windows-build.log 2>&1"
+          $exitCode = $LASTEXITCODE
+          Get-Content validation\windows-build.log
+          if ($exitCode -ne 0) {
+            throw "Windows packaging failed with exit code $exitCode."
+          }
+
+      - name: Validate Windows release and built renderer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & .\scripts\windows-release-validation.ps1 `
+            -ReleaseDirectory release `
+            -ValidationDirectory validation `
+            -ExpectedBuild 18
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows release validation failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Upload Windows release
+        uses: actions/upload-artifact@v4
+        with:
+          name: Airmonlink-Composer-1.1.0-Build18-Windows
+          path: |
+            release/Airmonlink-Composer-1.1.0-Build18-Setup.exe
+            release/Airmonlink-Composer-1.1.0-Build18-Portable.exe
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Airmonlink-Composer-1.1.0-Build18-Windows-Validation
+          path: validation/**
+          if-no-files-found: warn
+          retention-days: 30
