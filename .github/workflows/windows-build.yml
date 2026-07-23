@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout exact commit
-        uses: actions/checkout4v4
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -125,7 +125,16 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force validation | Out-Null
-          cmd.exe /d /s /c "npm test > validation\tests.tap 2>&1"
+          $tests = @(
+            Get-ChildItem test -Filter *.test.js |
+              Sort-Object Name |
+              ForEach-Object { $_.FullName }
+          )
+          if ($tests.Count -eq 0) {
+            throw "No test files were found."
+          }
+
+          & node --test @tests > validation\tests.tap 2>&1
           $exitCode = $LASTEXITCODE
           Get-Content validation\tests.tap
           if ($exitCode -ne 0) {
@@ -160,10 +169,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          & .\scripts\windows-release-validation.ps1 `
-            -ReleaseDirectory release `
-            -ValidationDirectory validation `
-            -ExpectedBuild 18
+          & .\scripts\windows-release-validation.ps1 -ReleaseDirectory release -ValidationDirectory validation -ExpectedBuild 18
           if ($LASTEXITCODE -ne 0) {
             throw "Windows release validation failed with exit code $LASTEXITCODE."
           }
