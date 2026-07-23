@@ -1,0 +1,84 @@
+name: Port proven Composer renderer
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "docs/checkpoints/05-renderer-port.trigger"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: port-proven-renderer-main
+  cancel-in-progress: false
+
+jobs:
+  port:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Composer 3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check out proven renderer source
+        run: git clone --depth 1 https://github.com/ktheagent/Airmonlink-composer-2.git /tmp/proven-source
+
+      - name: Port exact verified renderer
+        run: node scripts/port-proven-renderer.js /tmp/proven-source
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/ui/app.js
+          node --check scripts/port-proven-renderer.js
+          node --check src/ui/publishing-controller.js
+          node --check src/ui/dock-manager.js 
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run genuine regression tests
+        run: node --test test/v092-shutdown-lifecycle.test.js test/v120-build14-command-groups.test.js test/v120-build14-windows-association.test.js
+
+      - name: Verify Build 18 direct-source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'initializeShutdownLifecycle' src/ui/app.js
+          grep -q 'const commandCatalog = [' src/ui/app.js
+          grep -q 'initializeAssociatedFileOpening' src/ui/app.js
+          grep -q 'window.airmonDesktop' src/ui/app.js
+          grep -q 'Dedicated PDF' src/ui/index.html
+          grep -q 'PNG Pages' src/ui/index.html
+          grep -q 'System Print' src/ui/index.html
+          grep -q 'publishing-controller.js' src/ui/index.html
+          grep -q 'dock-manager.js' src/ui/index.html
+          ! grep -R -n -E 'Print or PDF|Print / PDF|Build 12|Build 17' src/ui/app.js src/ui/index.html
+
+      - name: Commit verified renderer port
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/app.js src/ui/index.html src/ui/styles.css src/ui/staff-key-rules.css
+          if git diff --cached --quiet; then
+            echo "No renderer changes were produced."
+            exit 1
+          fi
+          git commit -m "Restore proven full renderer and Build 18 publishing [skip ci]"
+          git push origin HEAD:main
