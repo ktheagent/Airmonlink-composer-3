@@ -1,0 +1,17 @@
+name: Validate and Build Windows Release
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-blocked:
+    name: Release gate
+    runs-on: windows-latest
+    steps:
+      - name: Block unapproved release builds
+        shell: pwsh
+        run: |
+          throw "RELEASE BLOCKED: enable the full Windows workflow only after source, regression, visual, publishing, performance, installed-app and self-critique checkpoints pass."
