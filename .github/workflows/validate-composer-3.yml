@@ -10,6 +10,7 @@ name: Audit Composer 3 Source
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/validate-composer-3.yml"
+      - "docs/checkpoints/04-audit.trigger"
   workflow_dispatch:
 
 permissions:
@@ -105,7 +106,7 @@ jobs:
           done
 
           {
-            echo
+            echo 
             echo "## JavaScript syntax"
             echo
           } >> "$report"
@@ -166,7 +167,7 @@ jobs:
             fi
           done
 
-          {
+            {
             echo
             echo "## Summary"
             echo
@@ -177,7 +178,7 @@ jobs:
             else
               echo "- Audit conclusion: **FAIL**"
             fi
-            echo
+            echo 
             echo "Not tested by this audit: Windows compilation, installed application identity, visual staff obstruction, real mouse docking, PDF/PNG page inspection, performance, printer, MIDI, or audio hardware."
           } >> "$report"
 
