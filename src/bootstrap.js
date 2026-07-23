@@ -4,7 +4,7 @@ const { app, BrowserWindow, dialog, shell } = require('electron');
 const fs = require('node:fs/promises');
 const publishing = require('./desktop/publishing');
 
-const BUILD = 17;
+const BUILD = 18;
 const active = new WeakSet();
 
 function js(value) {
