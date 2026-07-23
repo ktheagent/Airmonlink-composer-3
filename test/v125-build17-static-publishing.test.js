@@ -1,55 +1,59 @@
+'use strict';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..');
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('Build 17 package uses the direct publishing bootstrap', () => {
+test('Build 18 package uses the direct publishing bootstrap', () => {
   const pkg = require('../package.json');
   assert.equal(pkg.main, 'src/bootstrap.js');
-  assert.equal(pkg.buildNumber, '17');
-  assert.equal(pkg.build.buildVersion, '1.1.0.17');
-  assert.match(pkg.build.nsis.artifactName, /Build17/);
-  assert.match(pkg.build.portable.artifactName, /Build17/);
+  assert.equal(pkg.buildNumber, '18');
+  assert.equal(pkg.build.buildVersion, '1.1.0.18');
+  assert.match(pkg.build.nsis.artifactName, /Build18/);
+  assert.match(pkg.build.portable.artifactName, /Build18/);
 });
 
-test('Build 17 publishing UI installs visible controls without document observers', () => {
-  const source = fs.readFileSync(
-    path.join(root, 'src', 'ui', 'publishing-ui.js'),
-    'utf8'
-  );
-  assert.match(source, /const BUILD = 17;/);
-  assert.match(source, /Dedicated PDF/);
-  assert.match(source, /PNG Pages/);
-  assert.match(source, /data-publish-kind/);
-  assert.match(source, /pdfControls/);
-  assert.match(source, /pngControls/);
-  assert.doesNotMatch(source, /MutationObserver/);
+test('Build 18 publishing controller binds visible static controls without observers', () => {
+  const controller = read('src/ui/publishing-controller.js');
+  const html = read('src/ui/index.html');
+
+  assert.match(controller, /const BUILD = 18;/);
+  assert.match(controller, /AirmonPublishingUI/);
+  assert.match(controller, /data-publish="pdf"/);
+  assert.match(controller, /data-publish="png"/);
+  assert.match(controller, /pdfControls/);
+  assert.match(controller, /pngControls/);
+  assert.doesNotMatch(controller, /MutationObserver/);
+
+  assert.match(html, /Dedicated PDF/);
+  assert.match(html, /PNG Pages/);
+  assert.match(html, /System Print/);
+  assert.match(html, /data-build-18-badge/);
 });
 
-test('desktop bootstrap verifies controls inside the live renderer', () => {
-  const source = fs.readFileSync(
-    path.join(root, 'src', 'bootstrap.js'),
-    'utf8'
-  );
-  assert.match(source, /const BUILD = 17;/);
-  assert.match(source, /publishing-ui\.js/);
-  assert.match(source, /publishing-ui-ready/);
-  assert.match(source, /result\.pdfControls < 2/);
-  assert.match(source, /result\.pngControls < 2/);
+test('desktop bootstrap verifies direct controls inside the live renderer', () => {
+  const source = read('src/bootstrap.js');
+  assert.match(source, /const BUILD = 18;/);
+  assert.match(source, /AirmonPublishingUI/);
+  assert.match(source, /AirmonDockManager/);
+  assert.match(source, /native-ui-ready/);
+  assert.match(source, /publishingResult\.pdfControls < 2/);
+  assert.match(source, /publishingResult\.pngControls < 2/);
   assert.match(source, /dialog\.showMessageBox/);
-  assert.doesNotMatch(source, /publishing-exposure\.js/);
+  assert.doesNotMatch(source, /publishing-exposure\.js|publishing-ui\.js/);
 });
 
-test('Windows validator requires built renderer proof before artifact upload', () => {
-  const source = fs.readFileSync(
-    path.join(root, 'scripts', 'windows-release-validation.ps1'),
-    'utf8'
-  );
+test('Windows validator requires built renderer proof before artifact approval', () => {
+  const source = read('scripts/windows-release-validation.ps1');
   assert.match(source, /AIRMONLINK_VALIDATION_LOG/);
-  assert.match(source, /publishing-ui-ready/);
+  assert.match(source, /native-ui-ready/);
+  assert.match(source, /publishing-controller\.js/);
   assert.match(source, /pdfControls/);
   assert.match(source, /pngControls/);
-  assert.match(source, /ExpectedBuild = 17/);
+  assert.match(source, /ExpectedBuild = 18/);
+  assert.match(source, /windows-validation\.ok/);
 });
