@@ -1,108 +1,16 @@
-name: Install verified clean renderer v2
+name: Clean UI installer v2 (retired)
 
-"on":
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/install-clean-ui-v2.yml"
-      - "migration/ui-install-v2.trigger"
-      - "migration/repairs/publishing-controller.js"
-      - "test/v126-clean-renderer-migration.test.js"
+on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: composer-3-clean-renderer-install-v2
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  install:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - name: Checkout Composer 3
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Reconstruct archive
-        shell: bash
+      - name: Migration retired
         run: |
-          set -euo pipefail
-          cat migration/ui-bundle/part-*.txt > /tmp/composer3-ui.b64
-          base64 --decode /tmp/composer3-ui.b64 > /tmp/composer3-ui.tar.gz
-
-      - name: Verify archive hash
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "c083093ec8b7bc28bb36a77bd14926104ad71232d09370968e385f3e3bfc5b2a  /tmp/composer3-ui.tar.gz" | sha256sum --check -
-
-      - name: Extract renderer source
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -xzf /tmp/composer3-ui.tar.gz
-          cp migration/repairs/publishing-controller.js src/ui/publishing-controller.js
-
-      - name: Validate renderer source
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --check src/bootstrap.js
-          node --check src/ui/app.js
-          node --check src/ui/dock-manager.js
-          node --check src/ui/publishing-controller.js
-          node --check test/v126-clean-renderer-migration.test.js
-          node --test test/v126-clean-renderer-migration.test.js
-          test ! -e src/ui/publishing-ui.js
-          test ! -e src/ui/publishing-exposure.js
-          test ! -e src/release-bootstrap.js
-
-      - name: Save checkpoint
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p docs/checkpoints
-          cat > docs/checkpoints/03B-clean-renderer-installed.md <<'EOF'
-          # Checkpoint 3B — Clean renderer source installed
-
-          Repository: `ktheagent/Airmonlink-composer-3`
-          Branch: `main`
-          App version: `1.1.0`
-          Build: `18`
-          Decision: **RELEASE BLOCKED**
-
-          Confirmed:
-          - verified renderer archive reconstructed;
-          - corrupted publishing controller replaced by reviewed repository source;
-          - JavaScript syntax checks passed;
-          - dedicated renderer migration tests passed;
-          - legacy publishing injectors remain absent.
-
-          Not yet confirmed:
-          - complete regression suite;
-          - Windows compilation;
-          - installed application identity;
-          - visual staff-obstruction testing;
-          - physical docking, printer, MIDI, or audio testing;
-          - PDF and PNG page inspection.
-
-          No download is approved by this checkpoint.
-          EOF
-
-      - name: Commit renderer checkpoint
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/bootstrap.js src/ui test/v126-clean-renderer-migration.test.js docs/checkpoints/03B-clean-renderer-installed.md
-          if git diff --cached --quiet; then
-            echo "Renderer already installed."
-            exit 0
-          fi
-          git commit -m "Install verified clean renderer checkpoint [skip ci]"
-          git push origin HEAD:main
+          echo "This source-modifying migration workflow is retired."
+          echo "Composer 3 source is committed directly and validated by validate-composer-3.yml."
