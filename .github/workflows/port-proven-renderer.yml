@@ -20,14 +20,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout Composer 3
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Use Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
 
       - name: Install locked dependencies
@@ -58,15 +58,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'initializeShutdownLifecycle' src/ui/app.js
-          grep -q 'const commandCatalog = [' src/ui/app.js
-          grep -q 'initializeAssociatedFileOpening' src/ui/app.js
-          grep -q 'window.airmonDesktop' src/ui/app.js
-          grep -q 'Dedicated PDF' src/ui/index.html
-          grep -q 'PNG Pages' src/ui/index.html
-          grep -q 'System Print' src/ui/index.html
-          grep -q 'publishing-controller.js' src/ui/index.html
-          grep -q 'dock-manager.js' src/ui/index.html
+          grep -Fq 'initializeShutdownLifecycle' src/ui/app.js
+          grep -Fq 'const commandCatalog = [' src/ui/app.js
+          grep -Fq 'initializeAssociatedFileOpening' src/ui/app.js
+          grep -Fq 'window.airmonDesktop' src/ui/app.js
+          grep -Fq 'Dedicated PDF' src/ui/index.html
+          grep -Fq 'PNG Pages' src/ui/index.html
+          grep -Fq 'System Print' src/ui/index.html
+          grep -Fq 'publishing-controller.js' src/ui/index.html
+          grep -Fq 'dock-manager.js' src/ui/index.html
           ! grep -R -n -E 'Print or PDF|Print / PDF|Build 12|Build 17' src/ui/app.js src/ui/index.html
 
       - name: Commit verified renderer port
