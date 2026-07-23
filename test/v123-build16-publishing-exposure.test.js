@@ -1,38 +1,55 @@
+'use strict';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('Build 16 entry point installs publishing exposure after renderer navigation', () => {
-  const root = path.join(__dirname, '..');
-  const bootstrap = fs.readFileSync(path.join(root, 'src', 'release-bootstrap.js'), 'utf8');
-  const exposure = fs.readFileSync(path.join(root, 'src', 'ui', 'publishing-exposure.js'), 'utf8');
+const root = path.join(__dirname, '..');
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+
+test('Build 18 entry point verifies direct publishing and docking after renderer load', () => {
+  const bootstrap = read('src/bootstrap.js');
+  const controller = read('src/ui/publishing-controller.js');
+  const html = read('src/ui/index.html');
 
   assert.match(bootstrap, /browser-window-created/);
-  assert.match(bootstrap, /dom-ready/);
   assert.match(bootstrap, /did-finish-load/);
-  assert.match(bootstrap, /did-navigate-in-page/);
-  assert.match(bootstrap, /const BUILD = 16;/);
-  assert.match(bootstrap, /AirmonPublishingExposure\?\.build === \$\{BUILD\}/);
-  assert.match(bootstrap, /require\('\.\/bootstrap'\)/);
+  assert.match(bootstrap, /const BUILD = 18;/);
+  assert.match(bootstrap, /verifyNativeUi/);
+  assert.match(bootstrap, /AirmonPublishingUI/);
+  assert.match(bootstrap, /AirmonDockManager/);
+  assert.match(bootstrap, /native-ui-ready/);
+  assert.match(bootstrap, /require\(['"]\.\/main['"]\)/);
 
-  assert.match(exposure, /Build 16 publishing active/);
-  assert.match(exposure, /Dedicated PDF/);
-  assert.match(exposure, /PNG Pages/);
-  assert.match(exposure, /data-build-16-publish/);
-  assert.match(exposure, /data-build-16-menu/);
-  assert.match(exposure, /dataset\.airmonBuild = String\(BUILD\)/);
+  assert.match(controller, /const BUILD = 18;/);
+  assert.match(controller, /AirmonPublishingUI/);
+  assert.match(controller, /beginPdf/);
+  assert.match(controller, /beginPng/);
+  assert.match(controller, /showPngPage/);
+  assert.match(controller, /verify\(\)/);
+
+  assert.match(html, /Dedicated PDF/);
+  assert.match(html, /PNG Pages/);
+  assert.match(html, /System Print/);
+  assert.match(html, /publishing-controller\.js/);
+  assert.match(html, /dock-manager\.js/);
+
+  assert.doesNotMatch(bootstrap, /release-bootstrap\.js|publishing-exposure\.js|publishing-ui\.js/);
 });
 
-test('Build 16 exposure installer is idempotent and observer work is coalesced', () => {
-  const exposure = fs.readFileSync(
-    path.join(__dirname, '..', 'src', 'ui', 'publishing-exposure.js'),
-    'utf8'
-  );
+test('Build 18 publishing controller uses static controls without document observers', () => {
+  const controller = read('src/ui/publishing-controller.js');
+  const html = read('src/ui/index.html');
 
-  assert.match(exposure, /grid\.querySelector\('\[data-build-16-publish\]'\)/);
-  assert.match(exposure, /menu\.querySelector\('\[data-build-16-menu\]'\)/);
-  assert.match(exposure, /if \(scheduled\) return/);
-  assert.match(exposure, /queueMicrotask/);
-  assert.doesNotMatch(exposure, /querySelectorAll\('\[data-build-16-publish\]'\).*remove/);
+  assert.match(controller, /document\.addEventListener\(['"]click['"]/);
+  assert.match(controller, /Object\.freeze/);
+  assert.match(controller, /data-publish="pdf"/);
+  assert.match(controller, /data-publish="png"/);
+  assert.match(controller, /data-command="system-print"/);
+  assert.doesNotMatch(controller, /MutationObserver|queueMicrotask/);
+
+  assert.match(html, /data-publish="pdf"/);
+  assert.match(html, /data-publish="png"/);
+  assert.match(html, /data-command="system-print"/);
 });
