@@ -57,7 +57,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "perMachine": true,
-      "artifactName": "Airmonlink-Composer-${version}-Build18-Setup.${ext}",
+      "artifactName": "Airmonlink-Composer-${version}-Build19-Setup.${ext}",
       "runAfterFinish": false
     },
     "linux": {
@@ -77,9 +77,9 @@
       }
     ],
     "portable": {
-      "artifactName": "Airmonlink-Composer-${version}-Build18-Portable.${ext}"
+      "artifactName": "Airmonlink-Composer-${version}-Build19-Portable.${ext}"
     },
-    "buildVersion": "1.1.0.18"
+    "buildVersion": "1.1.0.19"
   },
-  "buildNumber": "18"
+  "buildNumber": "19"
 }
