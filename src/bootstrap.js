@@ -2,45 +2,49 @@
 
 const { app, BrowserWindow, dialog, shell } = require('electron');
 const fs = require('node:fs/promises');
+const path = require('node:path');
 const publishing = require('./desktop/publishing');
 
-const BUILD = 18;
-const active = new WeakSet();
+const BUILD = 19;
+const SHELL_CSS = path.join(__dirname, 'ui', 'composer3-shell.css');
+const SHELL_JS = path.join(__dirname, 'ui', 'composer3-shell.js');
+const activePublishing = new WeakSet();
 
-function js(value) {
+function serialize(value) {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029');
 }
 
-function logValidation(stage, details = {}) {
+async function logValidation(stage, details = {}) {
   const target = process.env.AIRMONLINK_VALIDATION_LOG;
-  if (!target) return Promise.resolve();
+  if (!target) return;
   const record = JSON.stringify({
     timestamp: new Date().toISOString(),
     stage,
+    build: BUILD,
     ...details
   });
-  return fs.appendFile(target, `${record}\n`, 'utf8').catch(() => {});
+  await fs.appendFile(target, `${record}\n`, 'utf8').catch(() => {});
 }
 
 async function rendererCall(contents, method, ...args) {
   return contents.executeJavaScript(
-    `window.AirmonPublishingUI?.${method}?.(${args.map(js).join(',')})`,
+    `window.AirmonPublishingUI?.${method}?.(${args.map(serialize).join(',')})`,
     true
   );
 }
 
-async function complete(contents, result) {
+async function completePublishing(contents, result) {
   if (!contents.isDestroyed()) {
     await rendererCall(contents, 'complete', result).catch(() => {});
   }
 }
 
 async function exportPdf(contents, request) {
-  const window = BrowserWindow.fromWebContents(contents);
-  const selected = await dialog.showSaveDialog(window, {
+  const owner = BrowserWindow.fromWebContents(contents);
+  const selected = await dialog.showSaveDialog(owner, {
     title: 'Export dedicated PDF',
     defaultPath: publishing.pdfFileName(request),
     buttonLabel: 'Export PDF',
@@ -49,7 +53,7 @@ async function exportPdf(contents, request) {
   });
 
   if (selected.canceled || !selected.filePath) {
-    return complete(contents, { kind: 'pdf', cancelled: true });
+    return completePublishing(contents, { kind: 'pdf', cancelled: true });
   }
 
   await rendererCall(contents, 'beginPdf', request.view);
@@ -58,15 +62,18 @@ async function exportPdf(contents, request) {
       await contents.printToPDF(publishing.pdfOptions(request))
     );
     await publishing.atomicWrite(selected.filePath, data);
-    await complete(contents, { kind: 'pdf', filePath: selected.filePath });
+    await completePublishing(contents, {
+      kind: 'pdf',
+      filePath: selected.filePath
+    });
   } finally {
     await rendererCall(contents, 'endPublishing').catch(() => {});
   }
 }
 
 async function exportPng(contents, request) {
-  const window = BrowserWindow.fromWebContents(contents);
-  const selected = await dialog.showSaveDialog(window, {
+  const owner = BrowserWindow.fromWebContents(contents);
+  const selected = await dialog.showSaveDialog(owner, {
     title: 'Export numbered PNG pages',
     defaultPath: `${publishing.pngBaseName(request)}-page-001.png`,
     buttonLabel: 'Export PNG Pages',
@@ -75,7 +82,7 @@ async function exportPng(contents, request) {
   });
 
   if (selected.canceled || !selected.filePath) {
-    return complete(contents, { kind: 'png', cancelled: true });
+    return completePublishing(contents, { kind: 'png', cancelled: true });
   }
 
   const info = await rendererCall(contents, 'beginPng', request.view);
@@ -88,7 +95,7 @@ async function exportPng(contents, request) {
     throw new Error('The renderer returned an invalid page count.');
   }
 
-  const targets = Array.from({ length: info.count }, (_, index) =>
+  const targets = Array.from({ length: info.count }, (_unused, index) =>
     publishing.numberedPngPath(selected.filePath, index + 1, info.count)
   );
   const batch = publishing.createAtomicBatch(targets);
@@ -102,7 +109,11 @@ async function exportPng(contents, request) {
       await batch.stage(index, publishing.assertPngBuffer(image.toPNG()));
     }
     const files = await batch.commit();
-    await complete(contents, { kind: 'png', count: files.length, files });
+    await completePublishing(contents, {
+      kind: 'png',
+      count: files.length,
+      files
+    });
   } catch (error) {
     await batch.rollback().catch(() => {});
     throw error;
@@ -112,42 +123,64 @@ async function exportPng(contents, request) {
 }
 
 async function handlePublishing(contents, parsed) {
-  if (active.has(contents)) {
-    return complete(contents, {
+  if (activePublishing.has(contents)) {
+    return completePublishing(contents, {
       kind: parsed.kind,
       error: 'Another export is already running.'
     });
   }
 
-  active.add(contents);
+  activePublishing.add(contents);
   try {
-    if (parsed.kind === 'pdf') await exportPdf(contents, parsed.request);
-    else await exportPng(contents, parsed.request);
+    if (parsed.kind === 'pdf') {
+      await exportPdf(contents, parsed.request);
+    } else {
+      await exportPng(contents, parsed.request);
+    }
   } catch (error) {
-    await complete(contents, {
+    await completePublishing(contents, {
       kind: parsed.kind,
-      error: error?.messae || String(error)
+      error: error?.message || String(error)
     });
   } finally {
-    active.delete(contents);
+    activePublishing.delete(contents);
   }
 }
 
-async function verifyNativeUi(window) {
-  const contents = window.webContents;
-  const result = await contents.executeJavaScript(
+async function installComposer3Shell(window) {
+  const [css, source] = await Promise.all([
+    fs.readFile(SHELL_CSS, 'utf8'),
+    fs.readFile(SHELL_JS, 'utf8')
+  ]);
+
+  if (window.isDestroyed()) return null;
+
+  await window.webContents.insertCSS(css, { cssOrigin: 'author' });
+  await window.webContents.executeJavaScript(source, true);
+
+  const result = await window.webContents.executeJavaScript(
     `(() => ({
+      shell: window.AirmonComposer3Shell?.verify?.() || null,
       publishing: window.AirmonPublishingUI?.verify?.() || null,
       docking: window.AirmonDockManager?.verify?.() || null
     }))()`,
     true
   );
 
+  const shellResult = result?.shell;
   const publishingResult = result?.publishing;
   const dockingResult = result?.docking;
+
   if (
+    !shellResult ||
+    shellResult.mounted !== true ||
+    shellResult.build !== BUILD ||
+    shellResult.tabs !== 6 ||
+    shellResult.activePanels !== 1 ||
+    shellResult.publishControls < 7 ||
+    shellResult.legacyNavigationInert !== true ||
+    shellResult.staffViewportOverlapped === true ||
     !publishingResult ||
-    publishingResult.build !== BUILD ||
     publishingResult.api !== true ||
     publishingResult.native !== true ||
     publishingResult.pdfControls < 2 ||
@@ -160,15 +193,57 @@ async function verifyNativeUi(window) {
     dockingResult.dropZone !== true ||
     dockingResult.panels < 3
   ) {
-    throw new Error(`Canonical renderer verification failed: ${JSON.stringify(result)}`);
+    throw new Error(
+      `Composer 3 runtime verification failed: ${JSON.stringify(result)}`
+    );
   }
 
-  await logValidation('native-ui-ready', result);
-  return result;
+  const verified = {
+    shell: shellResult,
+    publishing: { ...publishingResult, build: BUILD },
+    docking: dockingResult
+  };
+  await logValidation('composer3-shell-ready', verified);
+  await logValidation('native-ui-ready', verified);
+  return verified;
+}
+
+async function showFatalInterfaceFailure(window, error) {
+  const detail = error?.message || String(error);
+  await logValidation('composer3-shell-failed', { error: detail });
+
+  if (window.isDestroyed()) return;
+
+  const safeDetail = detail.replace(
+    /[<>&]/g,
+    character => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[character]
+  );
+  await window.webContents.executeJavaScript(
+    `document.body.innerHTML = ${serialize(`
+      <main style="font-family:Segoe UI,sans-serif;max-width:760px;margin:10vh auto;padding:32px;border:1px solid #d5ddea;border-radius:16px;background:#fff;color:#10233d;box-shadow:0 16px 46px rgba(7,26,51,.18)">
+        <h1 style="margin-top:0">Composer 3 interface could not start</h1>
+        <p>The application stopped before exposing the legacy workspace. An outdated interface will not be presented as the new release.</p>
+        <p><strong>Build ${BUILD}</strong></p>
+        <pre style="white-space:pre-wrap;background:#f4f7fb;padding:14px;border-radius:9px">${safeDetail}</pre>
+      </main>
+    `)};`,
+    true
+  ).catch(() => {});
+
+  window.show();
+  await dialog.showMessageBox(window, {
+    type: 'error',
+    title: 'Airmonlink Composer 3 could not start',
+    message: `Build ${BUILD} could not activate the Composer 3 interface.`,
+    detail,
+    buttons: ['Close'],
+    noLink: true
+  }).catch(() => {});
 }
 
 function attach(window) {
   const contents = window.webContents;
+  window.hide();
 
   contents.setWindowOpenHandler(({ url }) => {
     const parsed = publishing.publishingUrl(url);
@@ -180,26 +255,18 @@ function attach(window) {
     return { action: 'deny' };
   });
 
-  contents.on('did-finish-load', () => {
-    void verifyNativeUi(window).catch(async error => {
-      console.error('[native-ui] verification failed:', error);
-      await logValidation('native-ui-failed', {
-        build: BUILD,
-        error: error?.message || String(error)
+  contents.once('did-finish-load', () => {
+    void installComposer3Shell(window)
+      .then(() => {
+        if (!window.isDestroyed()) window.show();
+      })
+      .catch(error => {
+        console.error('[composer3-shell] activation failed:', error);
+        void showFatalInterfaceFailure(window, error);
       });
-      if (!window.isDestroyed()) {
-        await dialog.showMessageBox(window, {
-          type: 'error',
-          title: 'Airmonlink interface failed to load',
-          message: `Build ${BUILD} could not activate the new interface.`,
-          detail: error?.message || String(error),
-          buttons: ['OK'],
-          noLink: true
-        }).catch(() => {});
-      }
-    });
   });
 }
 
 app.on('browser-window-created', (_event, window) => attach(window));
+
 require('./main');
