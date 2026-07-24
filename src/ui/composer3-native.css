@@ -1,0 +1,77 @@
+:root {
+  --composer3-header-bg: #071a33;
+  --composer3-header-fg: #f7fbff;
+  --composer3-header-muted: #b8c8dc;
+  --composer3-header-line: rgba(255, 255, 255, 0.12);
+}
+
+#composer3NativeHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--composer3-header-line);
+  background: linear-gradient(105deg, #071a33, #0d2748);
+  color: var(--composer3-header-fg);
+  -webkit-app-region: drag;
+}
+
+.composer3-native-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.composer3-native-brand strong {
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+}
+
+.composer3-native-brand span {
+  color: var(--composer3-header-muted);
+  font-size: 0.72rem;
+}
+
+#composer3NativeHeader .document-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--composer3-header-fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer3-native-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.composer3-native-actions .build-badge {
+  border: 1px solid rgba(83, 220, 229, 0.65);
+  background: rgba(40, 184, 199, 0.14);
+  color: #dffcff;
+}
+
+#composer3CommandBridge {
+  display: none !important;
+}
+
+html[data-legacy-interface-removed="true"] .professional-nav,
+html[data-legacy-interface-removed="true"] .quick-toolbar,
+html[data-legacy-interface-removed="true"] .titlebar {
+  display: none !important;
+}
+
+body.composer3-legacy-removed #app.app-shell {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+@media print {
+  #composer3NativeHeader {
+    display: none !important;
+  }
+}
