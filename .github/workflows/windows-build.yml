@@ -89,19 +89,34 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: npm
+          node-version: "20.12.2"
 
-      - name: Install locked dependencies
+      - name: Install locked dependencies with isolated npm cache
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force validation | Out-Null
+
           Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue
           Remove-Item Env:NPM_CONFIG_PRODUCTION -ErrorAction SilentlyContinue
           Remove-Item Env:NPM_CONFIG_OMIT -ErrorAction SilentlyContinue
-          npm ci --include=dev
-          if ($LASTEXITCODE -ne 0) {
-            throw "npm ci failed with exit code $LASTEXITCODE."
+
+          $cachePath = Join-Path $env:RUNNER_TEMP "airmonlink-npm-cache-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          Remove-Item $cachePath -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $cachePath | Out-Null
+          $env:NPM_CONFIG_CACHE = $cachePath
+
+          node --version | Tee-Object -FilePath validation\node-version.txt
+          npm --version | Tee-Object -FilePath validation\npm-version.txt
+
+          npm ci --include=dev --no-audit --no-fund
+          $installExitCode = $LASTEXITCODE
+          if ($installExitCode -ne 0) {
+            $npmLogs = Join-Path $cachePath "_logs"
+            if (Test-Path $npmLogs) {
+              Copy-Item $npmLogs "validation\npm-logs" -Recurse -Force
+            }
+            throw "npm ci failed with exit code $installExitCode."
           }
 
           if (-not (Test-Path "node_modules\electron-builder\cli.js")) {
@@ -146,7 +161,7 @@ jobs:
           $summary = Select-String -Path validation\tests.tap -Pattern "^# tests (\d+)$" |
             Select-Object -Last 1
           if (-not $summary) {
-            throw "TAP test count was not found."
+            throw "TAP test conunt was not found."
           }
           $count = [int]$summary.Matches[0].Groups[1].Value
           if ($count -lt 160) {
