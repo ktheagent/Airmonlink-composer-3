@@ -8,48 +8,48 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('Build 18 entry point verifies direct publishing and docking after renderer load', () => {
+test('Build 19 packaged entry installs and verifies the Composer 3 shell', () => {
+  const bootstrap = read('src/bootstrap.js');
+  const shell = read('src/ui/composer3-shell.js');
+
+  assert.match(bootstrap, /const BUILD = 19;/);
+  assert.match(bootstrap, /browser-window-created/);
+  assert.match(bootstrap, /did-finish-load/);
+  assert.match(bootstrap, /window\.hide\(\)/);
+  assert.match(bootstrap, /installComposer3Shell/);
+  assert.match(bootstrap, /AirmonComposer3Shell/);
+  assert.match(bootstrap, /legacyNavigationInert/);
+  assert.match(bootstrap, /staffViewportOverlapped/);
+  assert.match(bootstrap, /composer3-shell-ready/);
+  assert.match(bootstrap, /require\(['"]\.\/main['"]\)/);
+
+  assert.match(shell, /const BUILD = 19;/);
+  assert.match(shell, /retireLegacyNavigation/);
+  assert.match(shell, /Build \$\{BUILD\} · Composer 3/);
+  assert.match(shell, /data-build-19-badge/);
+});
+
+test('Build 19 preserves direct publishing and docking verification', () => {
   const bootstrap = read('src/bootstrap.js');
   const controller = read('src/ui/publishing-controller.js');
   const html = read('src/ui/index.html');
 
-  assert.match(bootstrap, /browser-window-created/);
-  assert.match(bootstrap, /did-finish-load/);
-  assert.match(bootstrap, /const BUILD = 18;/);
-  assert.match(bootstrap, /verifyNativeUi/);
-  assert.match(bootstrap, /AirmonPublishingUI/);
-  assert.match(bootstrap, /AirmonDockManager/);
-  assert.match(bootstrap, /native-ui-ready/);
-  assert.match(bootstrap, /require\(['"]\.\/main['"]\)/);
+  assert.match(bootstrap, /window\.AirmonPublishingUI/);
+  assert.match(bootstrap, /window\.AirmonDockManager/);
+  assert.match(bootstrap, /publishingResult\.pdfControls < 2/);
+  assert.match(bootstrap, /publishingResult\.pngControls < 2/);
+  assert.match(bootstrap, /dockingResult\.handles < 3/);
 
-  assert.match(controller, /const BUILD = 18;/);
   assert.match(controller, /AirmonPublishingUI/);
   assert.match(controller, /beginPdf/);
   assert.match(controller, /beginPng/);
   assert.match(controller, /showPngPage/);
-  assert.match(controller, /verify\(\)/);
-
-  assert.match(html, /Dedicated PDF/);
-  assert.match(html, /PNG Pages/);
-  assert.match(html, /System Print/);
-  assert.match(html, /publishing-controller\.js/);
-  assert.match(html, /dock-manager\.js/);
-
-  assert.doesNotMatch(bootstrap, /release-bootstrap\.js|publishing-exposure\.js|publishing-ui\.js/);
-});
-
-test('Build 18 publishing controller uses static controls without document observers', () => {
-  const controller = read('src/ui/publishing-controller.js');
-  const html = read('src/ui/index.html');
-
   assert.match(controller, /document\.addEventListener\(['"]click['"]/);
-  assert.match(controller, /Object\.freeze/);
-  assert.match(controller, /data-publish="pdf"/);
-  assert.match(controller, /data-publish="png"/);
-  assert.match(controller, /data-command="system-print"/);
   assert.doesNotMatch(controller, /MutationObserver|queueMicrotask/);
 
   assert.match(html, /data-publish="pdf"/);
   assert.match(html, /data-publish="png"/);
   assert.match(html, /data-command="system-print"/);
+  assert.match(html, /dock-manager\.js/);
+  assert.match(html, /publishing-controller\.js/);
 });
