@@ -45,7 +45,7 @@ jobs:
           }
 
           if ($reportLines -notcontains '- Failing test files: `0`') {
-            throw "The comitted source audit records failing test files."
+            throw "The committed source audit records failing test files."
           }
 
           $commitLine = $reportLines |
@@ -63,7 +63,7 @@ jobs:
 
           $changedFiles = @(git diff --name-only "$auditedCommit..HEAD")
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to compare the audited commit with HEAD"”
+            throw "Unable to compare the audited commit with HEAD."
           }
 
           $criticalChanges = @(
@@ -131,16 +131,16 @@ jobs:
             throw "The normalized lockfile contains an invalid npmjs Artifactory path."
           }
 
-          & node -e "const fs=require('node:fs'); JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));" $lockPath
-          if ($LASTEXITCODE -ne 0) {
-            throw "The normalized package-lock.json failed Node JSON.parse validation."
-          }
-
           [System.IO.File]::WriteAllText(
             (Resolve-Path $lockPath).Path,
             $lockText,
             [System.Text.UTF8Encoding]::new($false)
           )
+
+          & node -e "const fs=require('node:fs'); JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));" $lockPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "The normalized package-lock.json failed Node JSON.parse validation."
+          }
 
           "Normalized lockfile tarball URLs: $replacementCount" |
             Set-Content -Encoding ascii validation\lockfile-registry-normalization.txt
@@ -189,7 +189,7 @@ jobs:
             throw "electron.exe was not installed."
           }
 
-     - name: Lint JavaScript
+      - name: Lint JavaScript
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
