@@ -1,7 +1,7 @@
 param(
   [string]$ReleaseDirectory = "release",
   [string]$ValidationDirectory = "validation",
-  [int]$ExpectedBuild = 18
+  [int]$ExpectedBuild = 19
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,19 +12,15 @@ $release = Join-Path $root $ReleaseDirectory
 $validation = Join-Path $root $ValidationDirectory
 New-Item -ItemType Directory -Force $validation | Out-Null
 
-$package = Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json
-$version = [string]$package.version
-$buildNumber = [string]$package.buildNumber
-$buildVersion = [string]$package.build.buildVersion
-$expectedSetup = "Airmonlink-Composer-$version-Build$ExpectedBuild-Setup.exe"
-$expectedPortable = "Airmonlink-Composer-$version-Build$ExpectedBuild-Portable.exe"
-$setupPath = Join-Path $release $expectedSetup
-$portablePath = Join-Path $release $expectedPortable
-
 $rows = [System.Collections.Generic.List[object]]::new()
 
 function Add-Row {
-  param([string]$Name, [string]$Status, [string]$Details)
+  param(
+    [string]$Name,
+    [ValidateSet("PASS", "FAIL", "BLOCKED", "NOT TESTED")]
+    [string]$Status,
+    [string]$Details
+  )
   $rows.Add([pscustomobject]@{
     Name = $Name
     Status = $Status
@@ -41,17 +37,48 @@ function Assert-Check {
   }
 }
 
+function Test-PEFile {
+  param([string]$Path)
+  if (-not (Test-Path $Path)) { return $false }
+
+  $stream = [System.IO.File]::OpenRead($Path)
+  try {
+    if ($stream.Length -lt 1024) { return $false }
+    $reader = [System.IO.BinaryReader]::new($stream)
+    if ($reader.ReadUInt16() -ne 0x5A4D) { return $false }
+    $stream.Position = 0x3C
+    $peOffset = $reader.ReadInt32()
+    if ($peOffset -lt 64 -or $peOffset -gt ($stream.Length - 4)) {
+      return $false
+    }
+    $stream.Position = $peOffset
+    return $reader.ReadUInt32() -eq 0x00004550
+  } finally {
+    $stream.Dispose()
+  }
+}
+
+$packagePath = Join-Path $root "package.json"
+$package = Get-Content $packagePath -Raw | ConvertFrom-Json
+$version = [string]$package.version
+$buildNumber = [string]$package.buildNumber
+$buildVersion = [string]$package.build.buildVersion
+$expectedSetup = "Airmonlink-Composer-$version-Build$ExpectedBuild-Setup.exe"
+$expectedPortable = "Airmonlink-Composer-$version-Build$ExpectedBuild-Portable.exe"
+$setupPath = Join-Path $release $expectedSetup
+$portablePath = Join-Path $release $expectedPortable
+
 Assert-Check ($buildNumber -eq [string]$ExpectedBuild) `
   "Package build number" `
   "Expected $ExpectedBuild; found $buildNumber"
 
 Assert-Check ($buildVersion -eq "$version.$ExpectedBuild") `
-  "Windows build version" `
+  "Package build version" `
   "Expected $version.$ExpectedBuild; found $buildVersion"
 
 Assert-Check ([string]$package.main -eq "src/bootstrap.js") `
-  "Publishing bootstrap" `
-  "Package entry point is $($package.main)"
+  "Package entry point" `
+  "Entry point is $($package.main)"
 
 Assert-Check ([string]$package.build.nsis.artifactName -match "Build$ExpectedBuild") `
   "Installer naming" `
@@ -63,12 +90,17 @@ Assert-Check ([string]$package.build.portable.artifactName -match "Build$Expecte
 
 $requiredSource = @(
   "src\bootstrap.js",
+  "src\main.js",
+  "src\preload.js",
   "src\desktop\publishing.js",
   "src\ui\index.html",
-  "src\ui\publishing-controller.js",
+  "src\ui\styles.css",
+  "src\ui\app.js",
+  "src\ui\composer3-shell.js",
+  "src\ui\composer3-shell.css",
   "src\ui\dock-manager.js",
-  "test\v122-dedicated-publishing.test.js",
-  "test\v125-build17-static-publishing.test.js"
+  "src\ui\publishing-controller.js",
+  "test\v127-composer3-shell.test.js"
 )
 
 foreach ($relative in $requiredSource) {
@@ -77,99 +109,61 @@ foreach ($relative in $requiredSource) {
     $relative
 }
 
-$bootstrapPath = Join-Path $root "src\bootstrap.js"
-$controllerPath = Join-Path $root "src\ui\publishing-controller.js"
-$htmlPath = Join-Path $root "src\ui\index.html"
+$bootstrapSource = Get-Content (Join-Path $root "src\bootstrap.js") -Raw
+$shellSource = Get-Content (Join-Path $root "src\ui\composer3-shell.js") -Raw
+$shellCss = Get-Content (Join-Path $root "src\ui\composer3-shell.css") -Raw
 
-$bootstrapSource = if (Test-Path $bootstrapPath) {
-  Get-Content $bootstrapPath -Raw
-} else {
-  ""
-}
-
-$controllerSource = if (Test-Path $controllerPath) {
-  Get-Content $controllerPath -Raw
-} else {
-  ""
-}
-
-$htmlSource = if (Test-Path $htmlPath) {
-  Get-Content $htmlPath -Raw
-} else {
-  ""
-}
-
-Assert-Check ($bootstrapSource.Contains("const BUILD = $ExpectedBuild;")) `
+Assert-Check $bootstrapSource.Contains("const BUILD = $ExpectedBuild;") `
   "Bootstrap build identity" `
   "src/bootstrap.js declares Build $ExpectedBuild"
 
-Assert-Check ($bootstrapSource.Contains("window.AirmonPublishingUI")) `
+Assert-Check $bootstrapSource.Contains("installComposer3Shell") `
+  "Composer 3 bootstrap activation" `
+  "The packaged entry point installs the Composer 3 shell"
+
+Assert-Check $bootstrapSource.Contains("window.hide()") `
+  "No legacy interface flash" `
+  "The main window remains hidden until Composer 3 verification passes"
+
+Assert-Check $bootstrapSource.Contains("composer3-shell-ready") `
+  "Composer 3 runtime evidence" `
+  "The bootstrap records a Composer 3 readiness event"
+
+Assert-Check $bootstrapSource.Contains("window.AirmonPublishingUI") `
   "Publishing API verification" `
-  "Bootstrap verifies the direct publishing API"
+  "The bootstrap verifies the live publishing controller"
 
-Assert-Check ($bootstrapSource.Contains("window.AirmonDockManager")) `
+Assert-Check $bootstrapSource.Contains("window.AirmonDockManager") `
   "Docking API verification" `
-  "Bootstrap verifies the direct docking API"
+  "The bootstrap verifies the live docking manager"
 
-Assert-Check ($bootstrapSource.Contains("native-ui-ready")) `
-  "Renderer verification logging" `
-  "Bootstrap records native-ui-ready"
+Assert-Check $shellSource.Contains("const BUILD = $ExpectedBuild;") `
+  "Composer 3 shell build identity" `
+  "composer3-shell.js declares Build $ExpectedBuild"
 
-Assert-Check ($bootstrapSource.Contains("publishingResult.pdfControls < 2")) `
-  "PDF control verification" `
-  "Bootstrap requires at least two PDF controls"
+Assert-Check $shellSource.Contains("Dedicated PDF") `
+  "Dedicated PDF command" `
+  "Composer 3 exposes Dedicated PDF"
 
-Assert-Check ($bootstrapSource.Contains("publishingResult.pngControls < 2")) `
-  "PNG control verification" `
-  "Bootstrap requires at least two PNG controls"
+Assert-Check $shellSource.Contains("PNG pages") `
+  "PNG pages command" `
+  "Composer 3 exposes numbered PNG pages"
 
-Assert-Check (-not $bootstrapSource.Contains("publishing-exposure.js")) `
-  "Legacy exposure disabled" `
-  "Bootstrap does not load publishing-exposure.js"
+Assert-Check $shellSource.Contains("System Print") `
+  "System Print fallback" `
+  "Composer 3 exposes System Print separately"
 
-Assert-Check (-not $bootstrapSource.Contains("publishing-ui.js")) `
-  "Legacy publishing UI disabled" `
-  "Bootstrap does not load publishing-ui.js"
+Assert-Check $shellSource.Contains("retireLegacyNavigation") `
+  "Legacy navigation retirement" `
+  "The old command surface is retired after the new shell mounts"
 
-Assert-Check ($controllerSource.Contains("const BUILD = $ExpectedBuild;")) `
-  "Publishing controller build identity" `
-  "publishing-controller.js declares Build $ExpectedBuild"
+Assert-Check $shellCss.Contains("grid-template-rows: auto auto auto minmax(0, 1fr) auto") `
+  "Staff-safe shell layout" `
+  "The command deck and score workspace occupy separate grid rows"
 
-Assert-Check ($controllerSource.Contains("window.AirmonPublishingUI")) `
-  "Publishing controller API" `
-  "publishing-controller.js exposes AirmonPublishingUI"
-
-Assert-Check ($controllerSource.Contains("beginPdf")) `
-  "Dedicated PDF controller" `
-  "publishing-controller.js exposes beginPdf"
-
-Assert-Check ($controllerSource.Contains("beginPng")) `
-  "PNG pages controller" `
-  "publishing-controller.js exposes beginPng"
-
-Assert-Check ($controllerSource.Contains("showPngPage")) `
-  "PNG page selection" `
-  "publishing-controller.js exposes showPngPage"
-
-Assert-Check (-not $controllerSource.Contains("MutationObserver")) `
-  "No whole-document publishing observer" `
-  "publishing-controller.js does not use MutationObserver"
-
-Assert-Check ($htmlSource.Contains("Dedicated PDF")) `
-  "Dedicated PDF visible source" `
-  "index.html contains Dedicated PDF controls"
-
-Assert-Check ($htmlSource.Contains("PNG Pages")) `
-  "PNG pages visible source" `
-  "index.html contains PNG Pages controls"
-
-Assert-Check ($htmlSource.Contains("System Print")) `
-  "System print visible source" `
-  "index.html contains System Print controls"
-
-Assert-Check ($htmlSource.Contains("data-build-18-badge")) `
-  "Build 18 badge source" `
-  "index.html contains the Build 18 badge marker"
+Assert-Check (-not ($shellSource.Contains("Build 18"))) `
+  "No stale shell build label" `
+  "Composer 3 shell source contains no Build 18 label"
 
 Assert-Check (Test-Path $setupPath) `
   "Setup artifact exists" `
@@ -179,44 +173,13 @@ Assert-Check (Test-Path $portablePath) `
   "Portable artifact exists" `
   $portablePath
 
-function Test-PEFile {
-  param([string]$Path)
-
-  if (-not (Test-Path $Path)) {
-    return $false
-  }
-
-  $stream = [System.IO.File]::OpenRead($Path)
-  try {
-    if ($stream.Length -lt 1024) {
-      return $false
-    }
-
-    $reader = [System.IO.BinaryReader]::new($stream)
-    if ($reader.ReadUInt16() -ne 0x5A4D) {
-      return $false
-    }
-
-    $stream.Position = 0x3C
-    $peOffset = $reader.ReadInt32()
-    if ($peOffset -lt 64 -or $peOffset -gt ($stream.Length - 4)) {
-      return $false
-    }
-
-    $stream.Position = $peOffset
-    return $reader.ReadUInt32() -eq 0x00004550
-  } finally {
-    $stream.Dispose()
-  }
-}
-
 Assert-Check (Test-PEFile $setupPath) `
   "Setup PE validation" `
-  "MZ and PE magic signatures"
+  "MZ and PE signatures"
 
 Assert-Check (Test-PEFile $portablePath) `
   "Portable PE validation" `
-  "MZ and PE magic signatures"
+  "MZ and PE signatures"
 
 if (Test-Path $setupPath) {
   $setupInfo = Get-Item $setupPath
@@ -239,7 +202,6 @@ foreach ($file in @($setupPath, $portablePath)) {
     $hashLines += "$($hash.Hash.ToLowerInvariant()) $([IO.Path]::GetFileName($file))"
   }
 }
-
 $hashPath = Join-Path $release "SHA256SUMS.txt"
 $hashLines | Set-Content -Encoding ascii $hashPath
 Assert-Check ((Test-Path $hashPath) -and ((Get-Item $hashPath).Length -gt 100)) `
@@ -250,23 +212,24 @@ $rendererLog = Join-Path $validation "portable-renderer-validation.jsonl"
 Remove-Item $rendererLog -Force -ErrorAction SilentlyContinue
 
 if (Test-Path $portablePath) {
-  $previousValidationLog = $env:AIRMONLINK_VALIDATION_LOG
+  $previousLog = $env:AIRMONLINK_VALIDATION_LOG
+  $process = $null
   try {
     $env:AIRMONLINK_VALIDATION_LOG = $rendererLog
     $process = Start-Process -FilePath $portablePath -PassThru
   } finally {
-    if ($null -eq $previousValidationLog) {
+    if ($null -eq $previousLog) {
       Remove-Item Env:AIRMONLINK_VALIDATION_LOG -ErrorAction SilentlyContinue
     } else {
-      $env:AIRMONLINK_VALIDATION_LOG = $previousValidationLog
+      $env:AIRMONLINK_VALIDATION_LOG = $previousLog
     }
   }
 
-  Start-Sleep -Seconds 10
+  Start-Sleep -Seconds 12
   $alive = -not $process.HasExited
   Assert-Check $alive `
     "Portable launch smoke test" `
-    "Process started and remained alive for 10 seconds"
+    "Process started and remained alive for 12 seconds"
 
   $records = @()
   if (Test-Path $rendererLog) {
@@ -279,68 +242,72 @@ if (Test-Path $portablePath) {
   }
 
   $ready = $records |
-    Where-Object { $_.stage -eq "native-ui-ready" } |
+    Where-Object { $_.stage -eq "composer3-shell-ready" } |
     Select-Object -Last 1
 
   Assert-Check ($null -ne $ready) `
-    "Built renderer native UI proof" `
-    "Portable executable reported native-ui-ready"
+    "Built Composer 3 runtime proof" `
+    "Portable executable reported composer3-shell-ready"
 
   if ($null -ne $ready) {
+    $shellReady = $ready.shell
     $publishingReady = $ready.publishing
     $dockingReady = $ready.docking
 
-    Assert-Check ($null -ne $publishingReady) `
-      "Built renderer publishing record" `
-      "native-ui-ready contains publishing details"
+    Assert-Check ([int]$ready.build -eq $ExpectedBuild) `
+      "Runtime build identity" `
+      "Runtime reported Build $($ready.build)"
 
-    Assert-Check ($null -ne $dockingReady) `
-      "Built renderer docking record" `
-      "native-ui-ready contains docking details"
+    Assert-Check (
+      ($null -ne $shellReady) -and
+      [bool]$shellReady.mounted -and
+      [int]$shellReady.build -eq $ExpectedBuild -and
+      [int]$shellReady.tabs -eq 6 -and
+      [int]$shellReady.activePanels -eq 1
+    ) `
+      "Composer 3 shell runtime structure" `
+      "Mounted=$($shellReady.mounted); tabs=$($shellReady.tabs); active panels=$($shellReady.activePanels)"
 
-    if ($null -ne $publishingReady) {
-      Assert-Check ([int]$publishingReady.build -eq $ExpectedBuild) `
-        "Built renderer build identity" `
-        "Renderer reported Build $($publishingReady.build)"
+    Assert-Check (
+      ($null -ne $shellReady) -and
+      [int]$shellReady.publishControls -ge 7
+    ) `
+      "Composer 3 publishing controls" `
+      "Runtime reported $($shellReady.publishControls) publishing controls"
 
-      Assert-Check ([bool]$publishingReady.api) `
-        "Built renderer publishing API" `
-        "Renderer publishing API is active"
+    Assert-Check (
+      ($null -ne $shellReady) -and
+      [bool]$shellReady.legacyNavigationInert
+    ) `
+      "Legacy interface retired at runtime" `
+      "Old command navigation is hidden, inert and removed from keyboard navigation"
 
-      Assert-Check ([bool]$publishingReady.native) `
-        "Built renderer native controls" `
-        "Renderer reported native publishing controls"
+    Assert-Check (
+      ($null -ne $shellReady) -and
+      (-not [bool]$shellReady.staffViewportOverlapped)
+    ) `
+      "No command deck overlap with staff viewport" `
+      "Runtime geometry reported no overlap"
 
-      Assert-Check ([int]$publishingReady.pdfControls -ge 2) `
-        "Built renderer PDF controls" `
-        "Renderer reported $($publishingReady.pdfControls) PDF controls"
+    Assert-Check (
+      ($null -ne $publishingReady) -and
+      [int]$publishingReady.build -eq $ExpectedBuild -and
+      [bool]$publishingReady.api -and
+      [bool]$publishingReady.native -and
+      [int]$publishingReady.pdfControls -ge 2 -and
+      [int]$publishingReady.pngControls -ge 2
+    ) `
+      "Publishing runtime wiring" `
+      "PDF=$($publishingReady.pdfControls); PNG=$($publishingReady.pngControls)"
 
-      Assert-Check ([int]$publishingReady.pngControls -ge 2) `
-        "Built renderer PNG controls" `
-        "Renderer reported $($publishingReady.pngControls) PNG controls"
-
-      Assert-Check ([bool]$publishingReady.badge) `
-        "Built renderer Build 18 badge" `
-        "Renderer reported a visible Build 18 badge"
-
-      Assert-Check ([bool]$publishingReady.status) `
-        "Built renderer publishing status" `
-        "Renderer reported visible publishing status"
-    }
-
-    if ($null -ne $dockingReady) {
-      Assert-Check ([int]$dockingReady.handles -ge 3) `
-        "Built renderer docking handles" `
-        "Renderer reported $($dockingReady.handles) docking handles"
-
-      Assert-Check ([bool]$dockingReady.dropZone) `
-        "Built renderer docking drop zone" `
-        "Renderer reported an active docking drop zone"
-
-      Assert-Check ([int]$dockingReady.panels -ge 3) `
-        "Built renderer docking panels" `
-        "Renderer reported $($dockingReady.panels) dockable panels"
-    }
+    Assert-Check (
+      ($null -ne $dockingReady) -and
+      [int]$dockingReady.handles -ge 3 -and
+      [bool]$dockingReady.dropZone -and
+      [int]$dockingReady.panels -ge 3
+    ) `
+      "Docking runtime wiring" `
+      "Handles=$($dockingReady.handles); panels=$($dockingReady.panels)"
   }
 
   if ($alive) {
@@ -352,19 +319,25 @@ if (Test-Path $portablePath) {
   }
 }
 
-Add-Row "Human GUI inspection" "BLOCKED" `
-  "Requires a person to inspect the installed Windows interface."
+Add-Row "Human Windows GUI inspection" "BLOCKED" `
+  "Requires a person to compare the installed Build $ExpectedBuild interface with the approved requirement matrix."
 
-Add-Row "PDF file opening" "BLOCKED" `
-  "Requires opening an exported PDF in a Windows PDF viewer."
+Add-Row "Installer upgrade path" "NOT TESTED" `
+  "Requires installation over an earlier Windows release."
 
-Add-Row "PNG sequence inspection" "BLOCKED" `
-  "Requires visually inspecting exported PNG pages."
+Add-Row "PDF page opening and visual inspection" "BLOCKED" `
+  "Requires exporting and opening every PDF page in an independent Windows viewer."
 
-Add-Row "MIDI hardware" "BLOCKED" `
+Add-Row "PNG page visual inspection" "BLOCKED" `
+  "Requires exporting and visually inspecting every numbered PNG page."
+
+Add-Row "Mouse drag-out and redock" "BLOCKED" `
+  "Requires real mouse interaction in the built Windows application."
+
+Add-Row "MIDI hardware" "NOT TESTED" `
   "Requires physical MIDI hardware."
 
-Add-Row "Audio device" "BLOCKED" `
+Add-Row "Audio hardware" "NOT TESTED" `
   "Requires physical audio output."
 
 Add-Row "Code-signing trust" "BLOCKED" `
@@ -374,10 +347,9 @@ $jsonPath = Join-Path $validation "windows-release-validation.json"
 $csvPath = Join-Path $validation "windows-release-validation.csv"
 $textPath = Join-Path $validation "windows-release-validation.txt"
 
-$rows | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 $jsonPath
+$rows | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 $jsonPath
 $rows | Export-Csv -NoTypeInformation -Encoding utf8 $csvPath
-$rows | Format-Table -AutoSize | Out-String |
-  Set-Content -Encoding utf8 $textPath
+$rows | Format-Table -AutoSize | Out-String | Set-Content -Encoding utf8 $textPath
 
 $failures = @($rows | Where-Object Status -eq "FAIL")
 if ($failures.Count -gt 0) {
@@ -385,12 +357,6 @@ if ($failures.Count -gt 0) {
   throw "Windows release validation found $($failures.Count) FAIL row(s)."
 }
 
-"OK" | Set-Content -Encoding ascii (
-  Join-Path $validation "windows-validation.ok"
-)
-
-Write-Host (
-  "Windows validation completed without FAIL rows. " +
-  "BLOCKED rows remain explicitly reported."
-)
+"OK" | Set-Content -Encoding ascii (Join-Path $validation "windows-validation.ok")
+Write-Host "Windows validation completed without FAIL rows. BLOCKED and NOT TESTED rows remain explicit."
 exit 0
