@@ -89,9 +89,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20.12.2"
+          node-version: "22.12.0"
 
-      - name: Install locked dependencies with isolated npm cache
+      - name: Install locked dependencies from the public npm registry
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -100,23 +100,52 @@ jobs:
           Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue
           Remove-Item Env:NPM_CONFIG_PRODUCTION -ErrorAction SilentlyContinue
           Remove-Item Env:NPM_CONFIG_OMIT -ErrorAction SilentlyContinue
+          Remove-Item node_modules -Recurse -Force -ErrorAction SilentlyContinue
 
-          $cachePath = Join-Path $env:RUNNER_TEMP "airmonlink-npm-cache-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          Remove-Item $cachePath -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force $cachePath | Out-Null
-          $env:NPM_CONFIG_CACHE = $cachePath
+          $registry = "https://registry.npmjs.org/"
+          npm config set registry $registry --location=user
+          npm config set replace-registry-host always --location=user
+          npm config set fetch-retries 5 --location=user
+          npm config set fetch-retry-factor 2 --location=user
+          npm config set fetch-retry-mintimeout 20000 --location=user
+          npm config set fetch-retry-maxtimeout 120000 --location=user
+          npm config set fetch-timeout 300000 --location=user
+
+          $configuredRegistry = (npm config get registry).Trim()
+          if ($LASTEXITCODE -ne 0 -or $configuredRegistry -ne $registry) {
+            throw "npm registry configuration failed. Expected $registry; found $configuredRegistry."
+          }
 
           node --version | Tee-Object -FilePath validation\node-version.txt
           npm --version | Tee-Object -FilePath validation\npm-version.txt
+          $configuredRegistry | Set-Content -Encoding ascii validation\npm-registry.txt
 
-          npm ci --include=dev --no-audit --no-fund
-          $installExitCode = $LASTEXITCODE
-          if ($installExitCode -ne 0) {
+          $installExitCode = 1
+          for ($attempt = 1; $attempt -le 2; $attempt += 1) {
+            $cachePath = Join-Path $env:RUNNER_TEMP "airmonlink-npm-cache-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$attempt"
+            Remove-Item $cachePath -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force $cachePath | Out-Null
+            $env:NPM_CONFIG_CACHE = $cachePath
+
+            npm ci --include=dev --no-audit --no-fund --prefer-online
+            $installExitCode = $LASTEXITCODE
+            if ($installExitCode -eq 0) {
+              break
+            }
+
             $npmLogs = Join-Path $cachePath "_logs"
             if (Test-Path $npmLogs) {
-              Copy-Item $npmLogs "validation\npm-logs" -Recurse -Force
+              Copy-Item $npmLogs "validation\npm-logs-attempt-$attempt" -Recurse -Force
             }
-            throw "npm ci failed with exit code $installExitCode."
+
+            Remove-Item node_modules -Recurse -Force -ErrorAction SilentlyContinue
+            if ($attempt -lt 2) {
+              Start-Sleep -Seconds 20
+            }
+          }
+
+          if ($installExitCode -ne 0) {
+            throw "npm ci failed after two attempts with exit code $installExitCode."
           }
 
           if (-not (Test-Path "node_modules\electron-builder\cli.js")) {
@@ -161,7 +190,7 @@ jobs:
           $summary = Select-String -Path validation\tests.tap -Pattern "^# tests (\d+)$" |
             Select-Object -Last 1
           if (-not $summary) {
-            throw "TAP test conunt was not found."
+            throw "TAP test count was not found."
           }
           $count = [int]$summary.Matches[0].Groups[1].Value
           if ($count -lt 160) {
