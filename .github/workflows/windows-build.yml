@@ -37,23 +37,25 @@ jobs:
             throw "The committed source audit report is missing."
           }
 
-          $report = Get-Content $reportPath -Raw
-          if ($report -notmatch '(?m)^- Audit conclusion: \*\*PASS\*\*$') {
+          $reportLines = @(Get-Content $reportPath)
+          if ($reportLines -notcontains '- Audit conclusion: **PASS**') {
             throw "The committed source audit is not green."
           }
-          if ($report -notmatch '(?m)^- Failing test files: `0`$') {
+          if ($reportLines -notcontains '- Failing test files: `0`') {
             throw "The committed source audit records failing test files."
           }
 
-          $commitMatch = [regex]::Match(
-            $report,
-            '(?m)^Commit: `([0-9a-f]{40})`$'
-          )
-          if (-not $commitMatch.Success) {
+          $commitLine = $reportLines |
+            Where-Object { $_ -match '^Commit: `([0-9a-f]{40})`$' } |
+            Select-Object -First 1
+          if (-not $commitLine) {
             throw "The audited commit SHA was not found in the report."
           }
 
-          $auditedCommit = $commitMatch.Groups[1].Value
+          $auditedCommit = [regex]::Match(
+            $commitLine,
+            '^Commit: `([0-9a-f]{40})`$'
+          ).Groups[1].Value
           $changedFiles = @(git diff --name-only "$auditedCommit..HEAD")
           if ($LASTEXITCODE -ne 0) {
             throw "Unable to compare the audited commit with HEAD."
