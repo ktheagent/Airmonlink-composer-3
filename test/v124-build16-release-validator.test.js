@@ -10,13 +10,19 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('Build 19 release validator requires the new source and runtime shell proof', () => {
   const pkg = require('../package.json');
+  const startupGuard = read('src/startup-guard.js');
   const bootstrap = read('src/bootstrap.js');
   const validator = read('scripts/windows-release-validation.ps1');
 
-  assert.equal(pkg.main, 'src/bootstrap.js');
+  assert.equal(pkg.main, 'src/startup-guard.js');
   assert.equal(pkg.buildNumber, '19');
   assert.equal(pkg.build.buildVersion, '1.1.0.19');
 
+  assert.match(startupGuard, /require\(['"]\.\/bootstrap['"]\)/);
+  assert.match(startupGuard, /professional-nav/);
+  assert.match(startupGuard, /quick-toolbar/);
+  assert.match(startupGuard, /titlebar/);
+  assert.match(startupGuard, /legacyInterfaceRemoved/);
   assert.match(bootstrap, /const BUILD = 19;/);
   assert.match(bootstrap, /composer3-shell-ready/);
   assert.match(bootstrap, /AirmonPublishingUI/);
@@ -25,6 +31,8 @@ test('Build 19 release validator requires the new source and runtime shell proof
   assert.match(validator, /\[int\]\$ExpectedBuild = 19/);
   assert.match(validator, /composer3-shell\.js/);
   assert.match(validator, /composer3-shell\.css/);
+  assert.match(validator, /startup-guard\.js/);
+  assert.match(validator, /composer3-native\.css/);
   assert.match(validator, /composer3-shell-ready/);
   assert.match(validator, /legacyNavigationInert/);
   assert.match(validator, /staffViewportOverlapped/);
