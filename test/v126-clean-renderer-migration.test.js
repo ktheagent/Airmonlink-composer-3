@@ -8,17 +8,22 @@ const test = require('node:test');
 const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('clean renderer source exists and legacy injected renderer files are absent', () => {
+test('Composer 3 source exists and retired runtime injectors remain absent', () => {
   for (const relative of [
+    'src/bootstrap.js',
+    'src/main.js',
+    'src/preload.js',
     'src/ui/index.html',
     'src/ui/styles.css',
     'src/ui/app.js',
+    'src/ui/composer3-shell.js',
+    'src/ui/composer3-shell.css',
     'src/ui/dock-manager.js',
-    'src/ui/publishing-controller.js',
-    'src/bootstrap.js'
+    'src/ui/publishing-controller.js'
   ]) {
     assert.equal(fs.existsSync(path.join(root, relative)), true, `${relative} must exist`);
   }
+
   for (const relative of [
     'src/ui/publishing-ui.js',
     'src/ui/publishing-exposure.js',
@@ -28,65 +33,47 @@ test('clean renderer source exists and legacy injected renderer files are absent
   }
 });
 
-test('native publishing controls replace legacy print labels', () => {
-  const html = read('src/ui/index.html');
-  const combined = [
-    html,
-    read('src/ui/app.js'),
-    read('src/ui/publishing-controller.js')
-  ].join('\n');
-
-  for (const label of ['Dedicated PDF', 'PNG Pages', 'System Print']) {
-    assert.match(html, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  }
-  for (const legacy of [
-    'Print or PDF',
-    'Print / PDF',
-    'PDF Print / PDF',
-    'Build 12',
-    'Build 17'
-  ]) {
-    assert.equal(combined.includes(legacy), false, `legacy marker must be absent: ${legacy}`);
-  }
-});
-
-test('staff-safe layout uses structural rows and a scrollable score viewport', () => {
-  const css = read('src/ui/styles.css');
-  assert.match(css, /\.app-shell[\s\S]*display:\s*grid/i);
-  assert.match(css, /grid-template-rows\s*:/i);
-  assert.match(css, /\.score-viewport[\s\S]*overflow\s*:\s*auto/i);
-  assert.match(css, /min-height\s*:\s*0/i);
-});
-
-test('docking and publishing are norma renderer modules, not runtime injectors', () => {
-  const docking = read('src/ui/dock-manager.js');
-  const publishing = read('src/ui/publishing-controller.js');
+test('Composer 3 replaces the visible old navigation without replacing the score engine', () => {
   const bootstrap = read('src/bootstrap.js');
+  const shell = read('src/ui/composer3-shell.js');
+  const html = read('src/ui/index.html');
 
-  assert.match(docking, /AirmonDockManager/);
-  assert.match(docking, /dragstart|pointerdown|mousedown/i);
-  assert.match(docking, /drop/i);
-  assert.match(publishing, /AirmonPublishingUI/);
-  assert.match(publishing, /beginPdf|beginPng|System Print|print/i);
+  assert.match(bootstrap, /installComposer3Shell/);
   assert.match(bootstrap, /require\(['"]\.\/main['"]\)/);
-  assert.equal(bootstrap.includes('publishing-ui.js'), false);
-  assert.equal(bootstrap.includes('publishing-exposure.js'), false);
+  assert.match(shell, /composer3-command-deck/);
+  assert.match(shell, /retireLegacyNavigation/);
+  assert.match(shell, /composer3-legacy-command-source/);
+  assert.match(shell, /aria-hidden/);
+  assert.match(shell, /setAttribute\(['"]inert['"]/);
+  assert.match(html, /notationCanvas/);
+  assert.match(html, /app\.js/);
+  assert.match(html, /publishing-controller\.js/);
+  assert.match(html, /dock-manager\.js/);
 });
 
-test('Build 18 identity is consistent in package, HTML, controller and bootstrap', () => {
-  const pkg = require('../package.json');
-  const html = read('src/ui/index.html');
-  const controller = read('src/ui/publishing-controller.js');
-  const bootstrap = read('src/bootstrap.js');
+test('Composer 3 staff-safe layout uses structural rows and a scrollable score viewport', () => {
+  const css = read('src/ui/composer3-shell.css');
+  const baseCss = read('src/ui/styles.css');
 
-  assert.equal(pkg.buildNumber, '18');
-  assert.equal(pkg.build.buildVersion, '1.1.0.18');
-  assert.match(pkg.build.nsis.artifactName, /Build18/);
-  assert.match(pkg.build.portable.artifactName, /Build18/);
-  assert.match(html, /Build 18/);
-  assert.match(html, /data-build-18-badge/);
-  assert.match(controller, /const BUILD = 18;/);
-  assert.match(controller, /build:\s*BUILD/);
-  assert.match(bootstrap, /const BUILD = 18;/);
-  assert.doesNotMatch([html, controller, bootstrap].join('\n'), /Build 17/);
+  assert.match(css, /grid-template-rows:\s*auto auto auto minmax\(0,\s*1fr\) auto/i);
+  assert.match(css, /#composer3CommandDeck[\s\S]*grid-row:\s*3/i);
+  assert.match(css, /\.workspace[\s\S]*grid-row:\s*4/i);
+  assert.match(css, /\.workspace[\s\S]*min-height:\s*0/i);
+  assert.match(css, /\.workspace[\s\S]*overflow:\s*hidden/i);
+  assert.match(baseCss, /\.score-viewport[\s\S]*overflow:\s*auto/i);
+});
+
+test('Build 19 identity is consistent in package and active Composer 3 source', () => {
+  const pkg = require('../package.json');
+  const bootstrap = read('src/bootstrap.js');
+  const shell = read('src/ui/composer3-shell.js');
+
+  assert.equal(pkg.buildNumber, '19');
+  assert.equal(pkg.build.buildVersion, '1.1.0.19');
+  assert.match(pkg.build.nsis.artifactName, /Build19/);
+  assert.match(pkg.build.portable.artifactName, /Build19/);
+  assert.match(bootstrap, /const BUILD = 19;/);
+  assert.match(shell, /const BUILD = 19;/);
+  assert.match(shell, /Build \$\{BUILD\} · Composer 3/);
+  assert.doesNotMatch([bootstrap, shell, JSON.stringify(pkg)].join('\n'), /Build 17/);
 });
