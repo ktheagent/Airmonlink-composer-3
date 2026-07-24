@@ -63,7 +63,7 @@ jobs:
 
           $changedFiles = @(git diff --name-only "$auditedCommit..HEAD")
           if ($LASTEXITCODE -ne 0) {
-            throw "Unable to compare the audited commit with HEAD."
+            throw "Unable to compare the audited commit with HEAD"”
           }
 
           $criticalChanges = @(
@@ -131,10 +131,9 @@ jobs:
             throw "The normalized lockfile contains an invalid npmjs Artifactory path."
           }
 
-          try {
-            $null = $lockText | ConvertFrom-Json
-          } catch {
-            throw "The normalized package-lock.json is not valid JSON: $($_.Exception.Message)"
+          & node -e "const fs=require('node:fs'); JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));" $lockPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "The normalized package-lock.json failed Node JSON.parse validation."
           }
 
           [System.IO.File]::WriteAllText(
@@ -190,7 +189,7 @@ jobs:
             throw "electron.exe was not installed."
           }
 
-      - name: Lint JavaScript
+     - name: Lint JavaScript
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
