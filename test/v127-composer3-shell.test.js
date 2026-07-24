@@ -141,7 +141,7 @@ test('Build 19 uses a fail-closed Composer 3 bootstrap before the proven engine'
   assert.equal(pkg.main, 'src/bootstrap.js');
   assert.equal(pkg.buildNumber, '19');
   assert.equal(pkg.build.buildVersion, '1.1.0.19');
-  assert.atch(pkg.build.nsis.artifactName, /Build19/);
+  assert.match(pkg.build.nsis.artifactName, /Build19/);
   assert.match(pkg.build.portable.artifactName, /Build19/);
 
   assert.match(bootstrap, /window\.hide\(\)/);
@@ -150,17 +150,17 @@ test('Build 19 uses a fail-closed Composer 3 bootstrap before the proven engine'
   assert.match(bootstrap, /Composer 3 runtime verification failed/);
   assert.match(bootstrap, /legacyNavigationInert/);
   assert.match(bootstrap, /staffViewportOverlapped/);
-  assert.match(bootstrap, /require\(['"]\.^./main['"]\)/);
+  assert.match(bootstrap, /require\(['"]\.\/main['"]\)/);
 });
 
-test('Composer3 CSS keeps command deck and score workspace in separate grid rows', () => {
+test('Composer 3 CSS keeps command deck and score workspace in separate grid rows', () => {
   const css = read('src/ui/composer3-shell.css');
 
   assert.match(css, /grid-template-rows:\s*auto auto auto minmax\(0,\s*1fr\) auto/);
   assert.match(css, /#composer3CommandDeck[\s\S]*grid-row:\s*3/);
   assert.match(css, /\.workspace[\s\S]*grid-row:\s*4/);
-  assert.atch(css, /\.workspace[\s\S]*[[^min-height:\s*0/);
-  assert.atch(css, /\.workspace[\s\S]*overflow:\s*hidden/);
-  assert.atch(css, /\.professional-nav\.composer3-legacy-command-source/);
-  assert.atch(css, /@media print[\s\S]*composer3-command-deck/);
+  assert.match(css, /\.workspace[\s\S]*min-height:\s*0/);
+  assert.match(css, /\.workspace[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.professional-nav\.composer3-legacy-command-source/);
+  assert.match(css, /@media print[\s\S]*composer3-command-deck/);
 });
